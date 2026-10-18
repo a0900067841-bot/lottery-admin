@@ -3,3 +3,26 @@
 /* v0.1.2: keep original ticket visual language; center section headings */
 .receipt-heading{display:block;text-align:center;margin:14px 0 8px;font-size:1.05em}
 .receipt .preview-warning{text-align:center;font-size:.8em;color:#777}
+
+/* v0.1.3: physical-width ticket preview; designed for 55 mm continuous roll. */
+.receipt{width:55mm;max-width:100%;padding:3mm 2mm;margin:12px auto;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei",sans-serif;
+  font-size:9pt;line-height:1.45;text-align:left;overflow-wrap:anywhere;box-sizing:border-box}
+.receipt .receipt-store{font-size:17pt;line-height:1.2;text-align:center;margin:0 0 2mm;font-weight:800}
+.receipt .receipt-prize{font-size:13pt;line-height:1.3;text-align:center;margin:0 0 3mm;font-weight:800}
+.receipt .receipt-meta{font-size:8pt;line-height:1.5;text-align:left;margin:1.5mm 0}
+.receipt .receipt-meta strong{font-weight:800}
+.receipt hr{border:0;border-top:1px solid #444;margin:2.5mm 0}
+.receipt .receipt-qr{width:29mm;min-height:29mm;margin:3mm auto 2.5mm;text-align:center}
+.receipt .receipt-qr-inner{width:29mm;height:29mm;display:flex;align-items:center;justify-content:center;
+  border:2px dashed #111;font-size:12pt;font-weight:800;letter-spacing:.4pt;line-height:1.1}
+.receipt .receipt-qr-note{display:block;font-size:6.5pt;margin-top:1mm}
+.receipt .receipt-section{margin:2.5mm 0;text-align:left}
+.receipt .receipt-section-title{display:block;font-size:9pt;font-weight:800;margin-bottom:1.5mm}
+.receipt .receipt-section-text{font-size:8.5pt;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.receipt .preview-warning{text-align:center;font-size:7pt;color:#555;margin:3mm 0 0}
+@media print{
+  @page{size:55mm auto;margin:0}
+  body{background:white}
+  .receipt{box-shadow:none;margin:0;padding:3mm 2mm}
+}

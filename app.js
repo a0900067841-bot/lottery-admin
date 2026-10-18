@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.2 is a local-only UI prototype. Never use browser storage as a real prize ledger.
+// v0.1.3 is a local-only UI prototype. Never use browser storage as a real prize ledger.
 const KEY='lottery_ui_v010'; // Reuse previous browser data; missing quantities default to 0
 const defaults={prizes:[{name:'購物金 10 元',type:'購物金',weight:5,quantity:10,issued:0},{name:'指定商品一份',type:'商品',weight:3,quantity:10,issued:0}],ticket:{store:'示範門市',days:7,usage:'限店使用',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效'}};
 let state;
@@ -18,28 +18,38 @@ function renderTicket(){
   const pad=n=>String(n).padStart(2,'0');
   const fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
   const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));
-  const heading=(label)=>txt('strong',label,'receipt-heading');
-  r.append(
-    txt('h2',t.store||'示範門市'),
-    txt('strong','電子抽獎活動獎券'),
-    document.createElement('hr'),
-    txt('p','獎項：購物金 10 元（示意）'),
-    txt('p',`列印日期：${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`),
-    txt('div','QR Code 示意圖｜非有效核銷碼','qr'),
-    txt('p','活動序號：DEMO-NOT-VALID'),
-    txt('p',`序號有效期限：${fmt(expiry)}`),
-    document.createElement('hr'),
-    heading('活動說明'),
-    txt('div',t.usage||'','rules'),
-    document.createElement('hr'),
-    heading('使用規則'),
-    txt('div',t.rules.split('\\n').filter(x=>x.trim()).map((x,i)=>`${i+1}. ${x}`).join('\\n'),'rules'),
-    document.createElement('hr'),
-    heading('注意事項'),
-    txt('div',t.warning||'','rules'),
-    document.createElement('hr'),
-    txt('p','本畫面為測試預覽，非有效獎券。','preview-warning')
-  );
+  const line=(label,value)=>{
+    const p=txt('p','','receipt-meta');
+    p.append(txt('strong',label),document.createTextNode(value));
+    return p;
+  };
+  const section=(heading,body)=>{
+    const block=txt('section','','receipt-section');
+    block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));
+    return block;
+  };
+  // The preview never issues or reserves a voucher. The actual unique serial
+  // must be created atomically by the future backend, not in localStorage.
+  if(String(t.store||'').trim())r.append(txt('h2',t.store.trim(),'receipt-store'));
+  const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];
+  r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));
+  r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));
+  r.append(document.createElement('hr'));
+  const qr=txt('div','','receipt-qr');
+  qr.setAttribute('aria-label','QR Code 佔位圖，非有效核銷碼');
+  qr.append(txt('div','QR CODE','receipt-qr-inner'),txt('small','測試預覽｜無法核銷','receipt-qr-note'));
+  r.append(qr);
+  r.append(line('活動序號：','DEMO-NOT-VALID'));
+  r.append(line('序號有效期限：',fmt(expiry)));
+  r.append(document.createElement('hr'));
+  const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');
+  if(String(t.usage||'').trim())r.append(section('活動說明：',t.usage));
+  if(rules)r.append(section('使用說明：',rules));
+  if(String(t.warning||'').trim()){
+    r.append(document.createElement('hr'));
+    r.append(section('注意事項：',t.warning));
+  }
+  r.append(txt('p','展示預覽｜非有效獎券','preview-warning'));
 }
 
 el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket={store:el('storeName').value.trim(),days:Number(el('validDays').value),usage:el('usage').value,rules:el('rules').value,warning:el('warning').value};save();renderTicket();alert('模板已儲存在這台裝置的瀏覽器中（非雲端）')});
