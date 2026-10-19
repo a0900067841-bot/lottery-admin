@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.6: local-only UI prototype. Browser storage is NEVER a real prize ledger.
+// v0.1.7: local-only UI prototype. Browser storage is NEVER a real prize ledger.
 const KEY='lottery_ui_v010'; // reuse v0.1.4 data
 const defaults={prizes:[{name:'購物金 10 元',type:'購物金',weight:5,quantity:10,issued:0},{name:'指定商品一份',type:'商品',weight:3,quantity:10,issued:0}],ticket:{store:'',days:7,usage:'限店使用',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
 let state;
@@ -14,10 +14,20 @@ function clearForm(){el('prizeForm').reset();el('editIndex').value=''}
 el('prizeForm').addEventListener('submit',e=>{e.preventDefault();const p={name:el('prizeName').value.trim(),type:el('prizeType').value,weight:Number(el('prizeWeight').value),quantity:Number(el('prizeQuantity').value)};if(!p.name||!Number.isInteger(p.weight)||p.weight<1||!Number.isSafeInteger(p.quantity)||p.quantity<0)return;const i=el('editIndex').value;if(i!==''){p.issued=state.prizes[Number(i)].issued??0;if(p.quantity<p.issued){alert('總數量不能小於已抽出數量');return}}else p.issued=0;if(i==='')state.prizes.push(p);else state.prizes[Number(i)]=p;save();clearForm();renderPrizes()});el('clearEdit').onclick=clearForm;
 function loadTicket(){const t=state.ticket;el('storeName').value=t.store||'';el('validDays').value=t.days;el('usage').value=t.usage;el('rules').value=t.rules;el('warning').value=t.warning;el('paperWidth').value=[30,40,50,55,57,58].includes(Number(t.paperWidth))?t.paperWidth:55;el('barcodeType').value=t.barcodeType||'qr';el('barcodeSize').value=t.barcodeSize??90;el('rulesFontSize').value=t.rulesFontSize??12;el('warningFontSize').value=t.warningFontSize??12;el('showRules').checked=t.showRules!==false;el('showWarning').checked=t.showWarning!==false;renderTicket()}
 function ticketFormValues(){return {store:el('storeName').value.trim(),days:Number(el('validDays').value),usage:el('usage').value,rules:el('rules').value,warning:el('warning').value,paperWidth:Number(el('paperWidth').value),barcodeType:el('barcodeType').value,barcodeSize:Number(el('barcodeSize').value),rulesFontSize:Number(el('rulesFontSize').value),warningFontSize:Number(el('warningFontSize').value),showRules:el('showRules').checked,showWarning:el('showWarning').checked}}
-function ticketChanged(){renderTicket();el('ticketSaveStatus').textContent='尚未儲存修改';el('ticketSaveStatus').dataset.saved='false'}
+function ticketChanged(){
+  renderTicket();
+  const changed=JSON.stringify(ticketFormValues())!==JSON.stringify(normalizeTicket(state.ticket));
+  el('ticketSaveStatus').textContent=changed?'預覽已更新，但尚未儲存；正式模板仍使用上次儲存版本':'目前設定與已儲存模板相同';
+  el('ticketSaveStatus').dataset.saved=changed?'false':'true';
+}
+function normalizeTicket(t){return {store:t.store||'',days:Number(t.days)||7,usage:t.usage||'',rules:t.rules||'',warning:t.warning||'',paperWidth:Number(t.paperWidth)||55,barcodeType:t.barcodeType||'qr',barcodeSize:Number(t.barcodeSize??90),rulesFontSize:Number(t.rulesFontSize??12),warningFontSize:Number(t.warningFontSize??12),showRules:t.showRules!==false,showWarning:t.showWarning!==false}}
+function renderSavedTicketSummary(){
+  const t=normalizeTicket(state.ticket);
+  el('savedTicketSummary').textContent=`${t.paperWidth} mm · ${t.barcodeType==='qr'?'QR Code':'Code 128'} · 有效 ${t.days} 天 · 條碼比例 ${t.barcodeSize}%`;
+}
 el('ticketForm').addEventListener('input',ticketChanged);el('ticketForm').addEventListener('change',ticketChanged);
 function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(60,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'))}
-el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket=ticketFormValues();try{save();renderTicket();el('ticketSaveStatus').textContent='已儲存至目前瀏覽器（非雲端）';el('ticketSaveStatus').dataset.saved='true'}catch(err){el('ticketSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('ticketSaveStatus').dataset.saved='false'}});
+el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket=ticketFormValues();try{save();renderTicket();el('ticketSaveStatus').textContent='已儲存列印模板（目前瀏覽器）；等待未來同步至 ESP32';el('ticketSaveStatus').dataset.saved='true';renderSavedTicketSummary()}catch(err){el('ticketSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('ticketSaveStatus').dataset.saved='false'}});
 el('checkCode').onclick=()=>{const code=el('redeemCode').value.trim();el('redeemResult').textContent=code?'展示版尚未連接伺服器，無法驗證或核銷此編號。':'請先輸入活動序號。'};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.tab))});
 const SOUND_KEY='lottery_sound_v015';let sound={enabled:true,volume:70,pattern:'short'};try{sound={...sound,...JSON.parse(localStorage.getItem(SOUND_KEY)||'{}')}}catch{}
@@ -25,4 +35,12 @@ function loadSound(){el('soundEnabled').checked=!!sound.enabled;el('soundVolume'
 el('soundVolume').addEventListener('input',()=>{el('soundVolumeValue').textContent=el('soundVolume').value+'%'});
 for(const id of ['soundEnabled','soundVolume','soundPattern']){el(id).addEventListener('change',()=>{el('soundSaveStatus').textContent='尚未儲存修改';el('soundSaveStatus').dataset.saved='false'})}
 el('soundForm').addEventListener('submit',e=>{e.preventDefault();sound={enabled:el('soundEnabled').checked,volume:Number(el('soundVolume').value),pattern:el('soundPattern').value};try{localStorage.setItem(SOUND_KEY,JSON.stringify(sound));el('soundSaveStatus').textContent='已儲存至目前瀏覽器，尚未同步 ESP32';el('soundSaveStatus').dataset.saved='true'}catch(err){el('soundSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('soundSaveStatus').dataset.saved='false'}});
-renderPrizes();loadTicket();loadSound();
+el('restoreTicket').addEventListener('click',()=>{loadTicket();el('ticketSaveStatus').textContent='已還原至上次儲存的模板';el('ticketSaveStatus').dataset.saved='true'});
+el('exportTicketConfig').addEventListener('click',()=>{
+  const payload={schema:'lottery-ticket-template',version:1,template:normalizeTicket(state.ticket)};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='lottery-saved-ticket-template.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+renderPrizes();loadTicket();loadSound();renderSavedTicketSummary();
+

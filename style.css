@@ -12,3 +12,16 @@ input[type=range]{height:30px;margin-top:10px;cursor:pointer;touch-action:pan-y}
 .barcode-qr-placeholder{max-width:min(32mm,100%)}
 .barcode-128-placeholder{max-width:100%}
 @media(max-width:390px){.card{padding:14px}main{padding:16px 10px 45px}}
+
+/* v0.1.7: edit -> live preview -> save -> print preparation */
+.ticket-preview-area{border-top:1px solid #dce5f1;margin-top:20px;padding-top:18px}
+.ticket-preview-area h2{margin:0 0 5px}
+.ticket-preview-area>.muted{margin:5px 0 12px}
+.save-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:16px}
+.save-actions button{margin:0}
+.print-prep{border-left:4px solid #6e8bb9}
+.prep-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0 18px}
+.prep-grid>div{background:#f5f8fd;border:1px solid #e2e8f0;border-radius:10px;padding:12px;min-width:0}
+.prep-grid strong{font-size:13px}
+.prep-grid p{font-size:13px;color:#52657d;line-height:1.6;overflow-wrap:anywhere}
+@media(max-width:540px){.prep-grid{grid-template-columns:1fr}.save-actions{flex-direction:column}.save-actions button{width:100%}}
