@@ -25,3 +25,6 @@ input[type=range]{height:30px;margin-top:10px;cursor:pointer;touch-action:pan-y}
 .prep-grid strong{font-size:13px}
 .prep-grid p{font-size:13px;color:#52657d;line-height:1.6;overflow-wrap:anywhere}
 @media(max-width:540px){.prep-grid{grid-template-columns:1fr}.save-actions{flex-direction:column}.save-actions button{width:100%}}
+
+/* v0.1.8 config backup UI */
+.print-prep hr{border:0;border-top:1px solid #e2e8f0;margin:18px 0}.print-prep input[type=file]{font-size:14px}.print-prep button{margin:4px 5px 10px 0}

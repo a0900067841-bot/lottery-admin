@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.7: local-only UI prototype. Browser storage is NEVER a real prize ledger.
+// v0.1.8: local-only UI prototype. Browser storage is NEVER a real prize ledger.
 const KEY='lottery_ui_v010'; // reuse v0.1.4 data
 const defaults={prizes:[{name:'購物金 10 元',type:'購物金',weight:5,quantity:10,issued:0},{name:'指定商品一份',type:'商品',weight:3,quantity:10,issued:0}],ticket:{store:'',days:7,usage:'限店使用',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
 let state;
@@ -44,3 +44,65 @@ el('exportTicketConfig').addEventListener('click',()=>{
 });
 renderPrizes();loadTicket();loadSound();renderSavedTicketSummary();
 
+
+// v0.1.8 device configuration interchange format (not a redeemable voucher).
+const DEVICE_SCHEMA='lottery-device-config';
+function deviceStatus(message,success=false){const e=el('deviceConfigStatus');e.textContent=message;e.dataset.saved=success?'true':'false'}
+function fullDeviceConfig(){
+  return {schema:DEVICE_SCHEMA,version:1,exportedAt:new Date().toISOString(),
+    ticket:normalizeTicket(state.ticket),
+    prizes:state.prizes.map(p=>({name:p.name,type:p.type,weight:Number(p.weight),quantity:Number(p.quantity),issued:Number(p.issued??0)})),
+    sound:{enabled:!!sound.enabled,volume:Number(sound.volume),pattern:sound.pattern},
+    note:'CONFIG_ONLY_NO_VOUCHERS_NO_REDEMPTION'};
+}
+function downloadJSON(obj,name){
+  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+el('exportDeviceConfig').addEventListener('click',()=>{
+  try{downloadJSON(fullDeviceConfig(),'lottery-device-config-v1.json');deviceStatus('已產生完整設備設定備份（尚未傳送 ESP32）',true)}
+  catch(e){deviceStatus('匯出失敗：'+e.message)}
+});
+function validText(v,max){return typeof v==='string'&&v.length<=max}
+function intRange(v,min,max){return Number.isSafeInteger(v)&&v>=min&&v<=max}
+function validateDeviceConfig(x){
+  if(!x||typeof x!=='object'||x.schema!==DEVICE_SCHEMA||x.version!==1)throw Error('不是支援的設備設定格式（版本 1）');
+  const t=x.ticket;
+  if(!t||!validText(t.store,40)||!intRange(t.days,1,365)||!validText(t.usage,3000)||!validText(t.rules,6000)||!validText(t.warning,3000))throw Error('獎券文字或有效期限不正確');
+  if(![30,40,50,55,57,58].includes(t.paperWidth)||!['qr','code128'].includes(t.barcodeType)||!intRange(t.barcodeSize,60,100)||!intRange(t.rulesFontSize,10,18)||!intRange(t.warningFontSize,10,18)||typeof t.showRules!=='boolean'||typeof t.showWarning!=='boolean')throw Error('紙寬、條碼或文字設定不正確');
+  if(!Array.isArray(x.prizes)||x.prizes.length>100)throw Error('獎項數量格式不正確（最多 100 項）');
+  for(const p of x.prizes){
+    if(!p||!validText(p.name,40)||!p.name.trim()||!['購物金','商品'].includes(p.type)||!intRange(p.weight,1,100000)||!intRange(p.quantity,0,1000000)||!intRange(p.issued,0,p.quantity))throw Error('獎項內容或庫存數值不正確');
+  }
+  const s=x.sound;
+  if(!s||typeof s.enabled!=='boolean'||!intRange(s.volume,0,100)||!['short','double','triple'].includes(s.pattern))throw Error('提示音設定不正確');
+  return {prizes:x.prizes.map(p=>({...p})),ticket:{...t},sound:{...s}};
+}
+el('importDeviceConfig').addEventListener('click',async()=>{
+  const file=el('importDeviceFile').files?.[0];
+  if(!file){deviceStatus('請先選擇 JSON 備份檔');return}
+  if(file.size>150000){deviceStatus('檔案超過 150 KB，已拒絕匯入');return}
+  let incoming;
+  try{incoming=validateDeviceConfig(JSON.parse(await file.text()))}
+  catch(e){deviceStatus('匯入檢查失敗：'+e.message);return}
+  if(!confirm('確定要用這份備份覆蓋目前瀏覽器的獎項、獎券模板及提示音設定嗎？這不會傳送至 ESP32。')){deviceStatus('已取消還原');return}
+  const oldState=state,oldSound=sound;
+  try{
+    // Update storage first. Revert both keys if any write fails.
+    const previousState=localStorage.getItem(KEY),previousSound=localStorage.getItem(SOUND_KEY);
+    try{
+      localStorage.setItem(KEY,JSON.stringify({prizes:incoming.prizes,ticket:incoming.ticket}));
+      localStorage.setItem(SOUND_KEY,JSON.stringify(incoming.sound));
+    }catch(err){
+      if(previousState===null)localStorage.removeItem(KEY);else localStorage.setItem(KEY,previousState);
+      if(previousSound===null)localStorage.removeItem(SOUND_KEY);else localStorage.setItem(SOUND_KEY,previousSound);
+      throw err;
+    }
+    state={prizes:incoming.prizes,ticket:incoming.ticket};sound=incoming.sound;
+    renderPrizes();loadTicket();loadSound();renderSavedTicketSummary();
+    el('ticketSaveStatus').textContent='已從備份還原至此瀏覽器';el('ticketSaveStatus').dataset.saved='true';
+    el('soundSaveStatus').textContent='已從備份還原至此瀏覽器';el('soundSaveStatus').dataset.saved='true';
+    deviceStatus('備份還原成功（僅此瀏覽器，尚未同步 ESP32）',true);
+  }catch(e){state=oldState;sound=oldSound;deviceStatus('還原失敗：瀏覽器儲存空間可能不足')}
+});
