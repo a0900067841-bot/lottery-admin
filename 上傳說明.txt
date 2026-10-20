@@ -1,0 +1,10 @@
+V08 GitHub 資料夾上傳版
+
+1. 先在電腦解壓縮 ZIP。
+2. 開啟 GitHub 儲存庫 lottery-admin，按 Add file → Upload files。
+3. 將解壓縮後 lottery-v08-github-upload 資料夾「裡面的所有內容」一起拖入 GitHub 上傳區，包含 cloudflare-worker 資料夾；不要只選取個別檔案，也不要直接上傳 ZIP。
+4. 確認上傳清單有 cloudflare-worker/worker.mjs 與 cloudflare-worker/wrangler.toml 路徑，然後 Commit changes。
+5. 若 GitHub 未保留資料夾路徑，先不要提交，回報畫面。
+6. 原本根目錄的 worker.mjs、wrangler.toml 仍會留著；確認新資料夾存在後再處理舊檔，不要先刪。
+7. GitHub Pages 的 index.html、app.js、style.css 應留在根目錄。
+8. 這個套件只整理上傳路徑，不代表 Cloudflare Worker 已部署或 ESP32 已更新。
