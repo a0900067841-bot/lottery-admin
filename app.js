@@ -115,9 +115,19 @@ const cloudStatusBtn=el('cloudStatusRefresh');
 function cloudStatus(message,success=false){
   const target=el('cloudSyncStatus');target.textContent=message;target.dataset.saved=success?'true':'false';
 }
+// v0.1.10: fixed public API endpoint; temporary tab-scoped key retention.
+const CLOUD_API_BASE='https://yijia-lottery-api.a0900067841.workers.dev';
+const CLOUD_SESSION_KEY='lottery_cloud_admin_key_session_v0110';
+el('cloudApiUrl').value=CLOUD_API_BASE;
+el('cloudApiUrl').readOnly=true;
+try{el('cloudAdminKey').value=sessionStorage.getItem(CLOUD_SESSION_KEY)||''}catch(_){}
+el('cloudAdminKey').addEventListener('input',()=>{
+  try{const v=el('cloudAdminKey').value;if(v)sessionStorage.setItem(CLOUD_SESSION_KEY,v);else sessionStorage.removeItem(CLOUD_SESSION_KEY)}catch(_){}
+});
 function cloudCredentials(){
   const raw=el('cloudApiUrl').value.trim().replace(/\/+$/,'');
   const key=el('cloudAdminKey').value;
+  if(!raw)throw Error('雲端 API 網址未設定');
   const parsed=new URL(raw);
   if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash||parsed.pathname!=='/')throw Error('請輸入 HTTPS API 根網址，不含路徑或參數');
   if(!key)throw Error('請輸入管理員同步金鑰');
