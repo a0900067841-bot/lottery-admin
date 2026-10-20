@@ -106,3 +106,50 @@ el('importDeviceConfig').addEventListener('click',async()=>{
     deviceStatus('備份還原成功（僅此瀏覽器，尚未同步 ESP32）',true);
   }catch(e){state=oldState;sound=oldSound;deviceStatus('還原失敗：瀏覽器儲存空間可能不足')}
 });
+
+
+// V08 phase 1: HTTPS cloud configuration publishing (not direct ESP32 access).
+// Keep the admin key in memory only. Never embed it in GitHub Pages or URL query strings.
+const cloudPushBtn=el('cloudPush');
+const cloudStatusBtn=el('cloudStatusRefresh');
+function cloudStatus(message,success=false){
+  const target=el('cloudSyncStatus');target.textContent=message;target.dataset.saved=success?'true':'false';
+}
+function cloudCredentials(){
+  const raw=el('cloudApiUrl').value.trim().replace(/\/+$/,'');
+  const key=el('cloudAdminKey').value;
+  const parsed=new URL(raw);
+  if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash||parsed.pathname!=='/')throw Error('請輸入 HTTPS API 根網址，不含路徑或參數');
+  if(!key)throw Error('請輸入管理員同步金鑰');
+  return {base:parsed.origin,key};
+}
+async function cloudRequest(method,path,body){
+  const {base,key}=cloudCredentials();
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+    const resp=await fetch(base+path,{method,headers:{'Authorization':'Bearer '+key,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store'});
+    const data=await resp.json().catch(()=>({error:'API 回傳不是 JSON'}));
+    if(!resp.ok)throw Error(data.error||('HTTP '+resp.status));
+    return data;
+  }finally{clearTimeout(timeout)}
+}
+cloudPushBtn.addEventListener('click',async()=>{
+  cloudPushBtn.disabled=true;
+  cloudStatus('正在驗證設定並送往雲端…');
+  try{
+    const payload=fullDeviceConfig();
+    validateDeviceConfig(payload);
+    const result=await cloudRequest('POST','/admin/config',payload);
+    cloudStatus('雲端已儲存設定版本 '+result.revision+'；'+(result.deviceAckRevision===result.revision?'設備已回報套用':'等待 ESP32 回報套用')+'。',true);
+  }catch(err){cloudStatus('同步未完成：'+err.message)}
+  finally{cloudPushBtn.disabled=false}
+});
+cloudStatusBtn.addEventListener('click',async()=>{
+  cloudStatusBtn.disabled=true;
+  try{
+    const result=await cloudRequest('GET','/admin/status');
+    cloudStatus(result.revision===null?'雲端尚無設定':('雲端版本 '+result.revision+'；設備已回報版本 '+(result.deviceAckRevision??'無')+(result.deviceAckRevision===result.revision?'（已同步）':'（尚未同步）')),true);
+  }catch(err){cloudStatus('查詢失敗：'+err.message)}
+  finally{cloudStatusBtn.disabled=false}
+});
