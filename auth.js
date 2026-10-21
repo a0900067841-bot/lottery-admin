@@ -1,10 +1,14 @@
 'use strict';
-// v0.1.14 - shared login; compatibility with the deployed single-admin Worker.
+// v0.1.17 - hide legacy cloud sync key row while preserving token input.
 // The Worker must return an authenticated role before multi-user access is enabled.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
 if(!key){console.error('Missing cloudAdminKey');return}
+// Keep the input for app.js authorization, but remove its visible legacy label.
+const legacyKeyLabel=key.closest('label');
+if(legacyKeyLabel){legacyKeyLabel.replaceWith(key);}
+key.type='hidden';key.hidden=true;key.setAttribute('aria-hidden','true');
 try{localStorage.removeItem('lottery_admin_session_v0111');sessionStorage.removeItem('lottery_cloud_admin_key_session_v0110')}catch(_){}
 const css=document.createElement('style');css.textContent=`
 #lotteryAuthGate[hidden],#lotteryAuthBar[hidden],.lottery-role-hidden{display:none!important}
@@ -30,7 +34,7 @@ function showRole(r){
  if(r!=='Admin')tabs.find(x=>x.dataset.tab==='redeem')?.click();
  else if(!document.querySelector('nav button.active:not(.lottery-role-hidden)'))tabs.find(x=>x.dataset.tab==='dashboard')?.click();
 }
-function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=data?.username||'';key.value=role==='Admin'?token:'';key.closest('label').hidden=true;gate.hidden=!!token;bar.hidden=!token;who.textContent=currentName;showRole(role)}
+function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=data?.username||'';key.value=role==='Admin'?token:'';key.hidden=true;gate.hidden=!!token;bar.hidden=!token;who.textContent=currentName;showRole(role)}
 async function api(path,method='GET',body,override){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
  try{const res=await fetch(BASE+path,{method,headers:{...(override||token?{'Authorization':'Bearer '+(override||token)}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',signal:ctl.signal});const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.error||'HTTP '+res.status);return data}finally{clearTimeout(timer)}
