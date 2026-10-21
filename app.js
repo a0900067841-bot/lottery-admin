@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.15: local configuration UI + authenticated cloud publishing. Browser storage is NEVER a real prize ledger.
+// v0.1.16: hide obsolete sync-key UI; retain authenticated cloud publishing. Browser storage is NEVER a real prize ledger.
 const KEY='lottery_ui_v010'; // reuse v0.1.4 data
 const defaults={prizes:[{name:'購物金 10 元',type:'購物金',weight:5,quantity:10,issued:0},{name:'指定商品一份',type:'商品',weight:3,quantity:10,issued:0}],ticket:{store:'',days:7,usage:'限店使用',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
 let state;
@@ -126,8 +126,21 @@ const cloudCard=el('cloudSyncCard');
 if(cloudCard){
   const legacyHint=Array.from(cloudCard.querySelectorAll('p')).find(p=>p.textContent.includes('正式帳號登入尚未完成'));
   if(legacyHint)legacyHint.textContent='管理員登入後即可同步雲端設定；ESP32 V07 尚未支援接收與回報。';
+  // Keep the input in the DOM: auth.js supplies the session token to it.
+  // Some existing styles use `label { display:block }`, which can override
+  // the native [hidden] presentation. Force the obsolete row to stay hidden.
   const legacyLabel=el('cloudAdminKey')?.closest('label');
-  if(legacyLabel)legacyLabel.hidden=true;
+  if(legacyLabel){
+    legacyLabel.hidden=true;
+    legacyLabel.style.setProperty('display','none','important');
+  }
+  for(const p of cloudCard.querySelectorAll('p.muted')){
+    if(p.textContent.includes('請勿在此輸入 Wi-Fi 密碼') || p.textContent.includes('API 金鑰不會寫入')){
+      p.textContent='雲端同步使用目前登入的管理員權限，不需要另外輸入同步金鑰。ESP32 V07 尚未支援接收及回報設定。';
+    }
+  }
+  const intro=cloudCard.querySelector('h2 + p.muted');
+  if(intro)intro.textContent='登入管理員帳號後，可將已儲存的獎項、獎券模板及提示音設定送至雲端。設定已上傳不代表 ESP32 已套用。';
 }
 cloudStatus('尚未查詢雲端狀態；管理員登入後可儲存設定或查詢設備同步狀態。');
 function cloudCredentials(){
