@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.22 - separate account creation and permission management.
+// v0.1.23 - separate account management, prize view-only controls and versioned loading.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -19,6 +19,8 @@ const css=document.createElement('style');css.textContent=`
 #lotteryAccountCard input,#lotteryAccountCard select{width:100%;max-width:450px}#lotteryAccountCard .lottery-passrow{max-width:450px}
 nav{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x}nav::-webkit-scrollbar{display:none}nav button{flex:0 0 auto;white-space:nowrap}
 #lotteryCreatePanel,#lotteryManagePanel{min-width:0}#lotteryAccountCard{margin-top:0}#lotteryAccountCard fieldset{border:1px solid #dce5f1;border-radius:10px;margin:15px 0;padding:12px}#lotteryAccountCard fieldset label{font-weight:400;margin:9px 0}
+
+html.lottery-prizes-readonly #prizeList .prize-row button{display:none!important}
 `;document.head.append(css);
 const gate=document.createElement('div');gate.id='lotteryAuthGate';gate.innerHTML=`
 <form id="lotteryLoginForm"><h2>電子抽獎機｜帳號登入</h2><p>每次開啟網站都需要登入。</p>
@@ -40,11 +42,19 @@ const who=document.createElement('span'),logout=document.createElement('button')
 const nav=document.querySelector('nav');if(nav)nav.before(bar);else document.body.prepend(bar);
 const username=gate.querySelector('#lotteryUsername'),pw=gate.querySelector('#lotteryPassword'),remember=gate.querySelector('#lotteryRemember'),msg=gate.querySelector('#lotteryLoginMessage'),loginBtn=gate.querySelector('#lotteryLoginButton');
 let token='',role='',currentName='',mustChange=false,permissions=[];
+window.lotteryCan=p=>!!token&&!mustChange&&can(p);
 const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['prizes_edit','修改獎項'],['ticket_view','查看獎券模板'],['ticket_edit','修改獎券模板'],['device_sync','設備雲端同步'],['redeem','獎券核銷'],['redeem_history','查詢核銷紀錄（預留）'],['accounts_view','查看人員'],['accounts_manage','建立／停用／刪除人員'],['permissions_manage','修改人員權限']];
 const can=p=>currentName==='Yuan'||permissions.includes(p);
 const panels=Array.from(document.querySelectorAll('.panel')),tabs=Array.from(document.querySelectorAll('nav button'));
 function bindEyes(root){for(const row of root.querySelectorAll('.lottery-passrow')){const input=row.querySelector('input'),btn=row.querySelector('button');btn.addEventListener('click',()=>{input.type=input.type==='password'?'text':'password';btn.setAttribute('aria-label',input.type==='password'?'顯示密碼':'隱藏密碼');btn.textContent=input.type==='password'?'👁️':'🙈'})}}
 bindEyes(gate);
+// Stop prize editing from delegated clicks even if an old button remains in the DOM.
+document.addEventListener('click',e=>{
+ if(token&&!mustChange&&can('prizes_edit'))return;
+ const button=e.target.closest?.('#prizeList .prize-row button');
+ if(button){e.preventDefault();e.stopImmediatePropagation()}
+},true);
+
 function showRole(){
  const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',createAccount:'accounts_manage',manageAccount:'accounts_view'};
  for(const tab of tabs)tab.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[tab.dataset.tab]));
@@ -55,6 +65,8 @@ function showRole(){
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
  for(const id of ['prizeForm','clearEdit']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('prizes_edit'))}
  for(const id of ['ticketForm']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('ticket_edit'))}
+ // Prize list is rendered by app.js, so hide its action buttons for read-only accounts.
+ document.documentElement.classList.toggle('lottery-prizes-readonly',!token||mustChange||!can('prizes_edit'));
  const visible=tabs.filter(x=>!x.classList.contains('lottery-role-hidden'));
  if(visible.length&&!visible.some(x=>x.classList.contains('active')))visible[0].click();
 }
