@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.8: local-only UI prototype. Browser storage is NEVER a real prize ledger.
+// v0.1.15: local configuration UI + authenticated cloud publishing. Browser storage is NEVER a real prize ledger.
 const KEY='lottery_ui_v010'; // reuse v0.1.4 data
 const defaults={prizes:[{name:'購物金 10 元',type:'購物金',weight:5,quantity:10,issued:0},{name:'指定商品一份',type:'商品',weight:3,quantity:10,issued:0}],ticket:{store:'',days:7,usage:'限店使用',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
 let state;
@@ -115,22 +115,28 @@ const cloudStatusBtn=el('cloudStatusRefresh');
 function cloudStatus(message,success=false){
   const target=el('cloudSyncStatus');target.textContent=message;target.dataset.saved=success?'true':'false';
 }
-// v0.1.10: fixed public API endpoint; temporary tab-scoped key retention.
+// v0.1.15: fixed API endpoint. Login token is provided in memory by auth.js.
+// Never cache login tokens or administrator keys in localStorage/sessionStorage.
 const CLOUD_API_BASE='https://yijia-lottery-api.a0900067841.workers.dev';
-const CLOUD_SESSION_KEY='lottery_cloud_admin_key_session_v0110';
 el('cloudApiUrl').value=CLOUD_API_BASE;
 el('cloudApiUrl').readOnly=true;
-try{el('cloudAdminKey').value=sessionStorage.getItem(CLOUD_SESSION_KEY)||''}catch(_){}
-el('cloudAdminKey').addEventListener('input',()=>{
-  try{const v=el('cloudAdminKey').value;if(v)sessionStorage.setItem(CLOUD_SESSION_KEY,v);else sessionStorage.removeItem(CLOUD_SESSION_KEY)}catch(_){}
-});
+// The login module owns cloudAdminKey and hides the legacy field after loading.
+// Remove the obsolete explanation without altering the working HTML structure.
+const cloudCard=el('cloudSyncCard');
+if(cloudCard){
+  const legacyHint=Array.from(cloudCard.querySelectorAll('p')).find(p=>p.textContent.includes('正式帳號登入尚未完成'));
+  if(legacyHint)legacyHint.textContent='管理員登入後即可同步雲端設定；ESP32 V07 尚未支援接收與回報。';
+  const legacyLabel=el('cloudAdminKey')?.closest('label');
+  if(legacyLabel)legacyLabel.hidden=true;
+}
+cloudStatus('尚未查詢雲端狀態；管理員登入後可儲存設定或查詢設備同步狀態。');
 function cloudCredentials(){
   const raw=el('cloudApiUrl').value.trim().replace(/\/+$/,'');
   const key=el('cloudAdminKey').value;
   if(!raw)throw Error('雲端 API 網址未設定');
   const parsed=new URL(raw);
   if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash||parsed.pathname!=='/')throw Error('請輸入 HTTPS API 根網址，不含路徑或參數');
-  if(!key)throw Error('請輸入管理員同步金鑰');
+  if(!key)throw Error('請先以管理員帳號登入');
   return {base:parsed.origin,key};
 }
 async function cloudRequest(method,path,body){
