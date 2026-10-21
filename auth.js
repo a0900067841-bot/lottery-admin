@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.21 - fixed login initialization; single-row navigation and separate create/manage account tabs.
+// v0.1.22 - separate account creation and permission management.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -34,7 +34,7 @@ const gate=document.createElement('div');gate.id='lotteryAuthGate';gate.innerHTM
 document.body.append(gate);
 const loginForm=gate.querySelector('#lotteryLoginForm'),changeForm=gate.querySelector('#lotteryChangeForm');
 // HTML hidden must override the form display rule.
-const style=document.createElement('style');style.textContent='#lotteryAuthGate form[hidden]{display:none!important}';document.head.append(style);
+const style=document.createElement('style');style.textContent='#lotteryAuthGate form[hidden],#lotteryManagePasswordRow[hidden]{display:none!important}';document.head.append(style);
 const bar=document.createElement('div');bar.id='lotteryAuthBar';bar.hidden=true;
 const who=document.createElement('span'),logout=document.createElement('button');logout.textContent='登出';logout.type='button';bar.append(who,logout);
 const nav=document.querySelector('nav');if(nav)nav.before(bar);else document.body.prepend(bar);
@@ -49,11 +49,9 @@ function showRole(){
  const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',createAccount:'accounts_manage',manageAccount:'accounts_view'};
  for(const tab of tabs)tab.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[tab.dataset.tab]));
  for(const panel of panels)panel.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[panel.id]));
- const accountAllowed=token&&!mustChange&&can('accounts_view');
- card.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
  createPanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
- managePanel.classList.toggle('lottery-role-hidden',!accountAllowed);
- if(accountAllowed){card.querySelector('#lotteryAccountForm').classList.toggle('lottery-role-hidden',!can('accounts_manage'));}
+ managePanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_view'));
+ if(token&&!mustChange)showSelectedAccount();
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
  for(const id of ['prizeForm','clearEdit']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('prizes_edit'))}
  for(const id of ['ticketForm']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('ticket_edit'))}
@@ -85,16 +83,6 @@ changeForm.addEventListener('submit',async e=>{e.preventDefault();const old=gate
  const button=gate.querySelector('#lotteryChangeButton');button.disabled=true;try{await api('/auth/change-password','POST',{currentPassword:old,newPassword:p1});notice.textContent='密碼修改完成，請重新登入';await signOut();msg.textContent='密碼修改完成，請使用新密碼登入。'}catch(err){notice.textContent='修改失敗：'+err.message}finally{button.disabled=false}
 });
 key.addEventListener('input',()=>{key.value=token&&!mustChange&&can('device_sync')?token:''});
-const dash=document.querySelector('#dashboard'),card=document.createElement('div');card.className='card';card.id='lotteryAccountCard';
-card.innerHTML=`<h2>帳號管理（Admin）</h2><p class="muted">新增 Admin／User，使用 4 位數臨時密碼；首次登入必須改成 8～12 位正式密碼。姓名僅供管理員辨識。</p>
-<div id="lotteryAccountList">登入後載入</div><form id="lotteryAccountForm">
-<label>登入帳號（3～24 位英數字、底線或連字號）<input id="lotteryNewUser" maxlength="24" autocomplete="off" required></label>
-<label>姓名（僅管理員可見）<input id="lotteryFullName" maxlength="40" autocomplete="off"></label>
-<label>帳號權限<select id="lotteryNewRole"><option value="User">User 核銷人員</option><option value="Admin">Admin 管理員</option></select></label>
-<label>4 位數臨時密碼</label><div class="lottery-passrow"><input id="lotteryNewPass" type="password" minlength="4" maxlength="4" inputmode="numeric" autocomplete="new-password"><button type="button" class="lottery-eye" aria-label="顯示密碼">👁️</button></div>
-<label>操作<select id="lotteryAccountAction"><option value="create">建立帳號</option><option value="password">重設臨時密碼</option><option value="name">修改姓名</option><option value="disable">停用帳號</option><option value="enable">啟用帳號</option><option value="permissions">設定個別權限</option><option value="delete">永久刪除人員</option></select></label>
-<fieldset id="lotteryPerms"><legend>個別權限（未勾選的功能完全隱藏）</legend></fieldset><button type="submit" class="primary" id="lotteryAccountSave">執行</button><p id="lotteryAccountMsg" role="status"></p></form>`;
-// Keep the original form and handlers; move it between the two dedicated tabs.
 const main=document.querySelector('main');
 const createPanel=document.createElement('section');createPanel.id='createAccount';createPanel.className='panel';
 const managePanel=document.createElement('section');managePanel.id='manageAccount';managePanel.className='panel';
@@ -102,51 +90,72 @@ main.append(createPanel,managePanel);
 const createTab=document.createElement('button');createTab.type='button';createTab.dataset.tab='createAccount';createTab.textContent='建立帳號';
 const manageTab=document.createElement('button');manageTab.type='button';manageTab.dataset.tab='manageAccount';manageTab.textContent='帳號管理';
 nav.append(createTab,manageTab);tabs.push(createTab,manageTab);panels.push(createPanel,managePanel);
-const cardHeading=card.querySelector('h2');
-const list=card.querySelector('#lotteryAccountList');
-const form=card.querySelector('#lotteryAccountForm');
-const actionSelect=card.querySelector('#lotteryAccountAction');
-const managementList=document.createElement('div');managementList.className='card';
-managementList.innerHTML='<h2>現有人員</h2>';
-managementList.append(list);
-managePanel.append(managementList);
-createPanel.append(card);
-const userInput=card.querySelector('#lotteryNewUser');
-const createMode=()=>{cardHeading.textContent='建立帳號';actionSelect.value='create';actionSelect.closest('label').hidden=true;permBox.hidden=false;userInput.placeholder='輸入新帳號';};
-const manageMode=()=>{cardHeading.textContent='帳號管理';actionSelect.closest('label').hidden=false;actionSelect.value='permissions';permBox.hidden=false;userInput.placeholder='輸入現有帳號';};
-function activateAccountTab(which){
- const panel=which==='create'?createPanel:managePanel,tab=which==='create'?createTab:manageTab;
- panel.append(card);
- if(which==='manage')managePanel.prepend(managementList);
- if(which==='create')createMode();else manageMode();
- for(const p of panels)p.classList.toggle('active',p===panel);
- for(const t of tabs)t.classList.toggle('active',t===tab);
- tab.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});
-}
-createTab.addEventListener('click',()=>{if(!createTab.classList.contains('lottery-role-hidden'))activateAccountTab('create')});
-manageTab.addEventListener('click',()=>{if(!manageTab.classList.contains('lottery-role-hidden'))activateAccountTab('manage')});
-for(const t of tabs.filter(t=>t!==createTab&&t!==manageTab))t.addEventListener('click',()=>{
- createPanel.classList.remove('active');managePanel.classList.remove('active');createTab.classList.remove('active');manageTab.classList.remove('active');
-});
-createTab.classList.add('lottery-role-hidden');manageTab.classList.add('lottery-role-hidden');bindEyes(card);
-const accountList=card.querySelector('#lotteryAccountList'),accountMsg=card.querySelector('#lotteryAccountMsg');
-const permBox=card.querySelector('#lotteryPerms');
-for(const [id,label] of ALL_PERMS){const row=document.createElement('label');row.style.display='block';const check=document.createElement('input');check.type='checkbox';check.value=id;check.style.width='auto';check.style.marginRight='8px';row.append(check,document.createTextNode(label));permBox.append(row)}
+createPanel.innerHTML=`<h1>建立帳號</h1><form id="lotteryCreateForm" class="card">
+<label>登入帳號（3～24 位英數字、底線或連字號）<input id="lotteryCreateUser" maxlength="24" autocomplete="off" required></label>
+<label>姓名（僅管理員可見）<input id="lotteryCreateName" maxlength="40" autocomplete="off"></label>
+<label>帳號身分<select id="lotteryCreateRole"><option value="User">User 核銷人員</option><option value="Admin">Admin 管理員</option></select></label>
+<label>4 位數臨時密碼</label><div class="lottery-passrow"><input id="lotteryCreatePass" type="password" minlength="4" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="new-password" required><button type="button" class="lottery-eye" aria-label="顯示密碼">👁️</button></div>
+<button class="primary" type="submit">建立帳號</button><p id="lotteryCreateMsg" role="status"></p></form>`;
+managePanel.innerHTML=`<h1>帳號管理</h1><div class="card"><label>選擇現有人員<select id="lotteryManageSelect"><option value="">請先選擇人員</option></select></label><p id="lotteryManageInfo" class="muted"></p></div>
+<form id="lotteryManageForm" class="card"><h2>人員資料及狀態</h2><label>姓名（僅管理員可見）<input id="lotteryManageName" maxlength="40"></label>
+<label>管理操作<select id="lotteryManageAction"><option value="name">修改姓名</option><option value="password">重設臨時密碼</option><option value="disable">停用帳號</option><option value="enable">啟用帳號</option><option value="delete">永久刪除人員</option></select></label>
+<div id="lotteryManagePasswordRow" hidden><label>新的 4 位數臨時密碼</label><div class="lottery-passrow"><input id="lotteryManagePass" type="password" minlength="4" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="new-password"><button type="button" class="lottery-eye" aria-label="顯示密碼">👁️</button></div></div>
+<button class="primary" type="submit">執行管理操作</button><p id="lotteryManageMsg" role="status"></p></form>
+<form id="lotteryPermissionForm" class="card"><h2>個別功能權限</h2><p class="muted">未勾選的功能完全隱藏。權限由這裡獨立設定，不在建立帳號時設定。</p>
+<fieldset id="lotteryManagePerms"><legend>允許使用的功能</legend></fieldset><button type="submit" class="primary">儲存個別權限</button><p id="lotteryPermMsg" role="status"></p></form>`;
+const createForm=createPanel.querySelector('#lotteryCreateForm'),manageForm=managePanel.querySelector('#lotteryManageForm'),permissionForm=managePanel.querySelector('#lotteryPermissionForm');
+const createMsg=createPanel.querySelector('#lotteryCreateMsg'),manageMsg=managePanel.querySelector('#lotteryManageMsg'),permMsg=managePanel.querySelector('#lotteryPermMsg');
+const manageSelect=managePanel.querySelector('#lotteryManageSelect'),manageAction=managePanel.querySelector('#lotteryManageAction'),managePassRow=managePanel.querySelector('#lotteryManagePasswordRow'),permBox=managePanel.querySelector('#lotteryManagePerms');
+for(const [id,label] of ALL_PERMS){const row=document.createElement('label');row.style.display='block';row.style.fontWeight='400';const check=document.createElement('input');check.type='checkbox';check.value=id;check.style.width='auto';check.style.display='inline-block';check.style.marginRight='8px';row.append(check,document.createTextNode(label));permBox.append(row)}
+bindEyes(createPanel);bindEyes(managePanel);
 let cachedAccounts=[];
 const selectedPerms=()=>Array.from(permBox.querySelectorAll('input:checked'),x=>x.value);
 const fillPerms=p=>{for(const el of permBox.querySelectorAll('input'))el.checked=p.includes(el.value)};
-card.querySelector('#lotteryNewUser').addEventListener('change',()=>{const old=cachedAccounts.find(x=>x.username===card.querySelector('#lotteryNewUser').value.trim());if(old)fillPerms(old.permissions||[])});
-card.querySelector('#lotteryNewRole').addEventListener('change',e=>fillPerms(e.target.value==='Admin'?ALL_PERMS.map(x=>x[0]):['redeem']));
-fillPerms(['redeem']);
-const updatePermVisibility=()=>{permBox.hidden=!['create','permissions'].includes(actionSelect.value);};
-actionSelect.addEventListener('change',updatePermVisibility);updatePermVisibility();
-async function refreshUsers(){if(!can('accounts_view')||mustChange)return;try{const data=await api('/admin/accounts');cachedAccounts=data.accounts;accountList.replaceChildren();for(const a of data.accounts){const p=document.createElement('p');p.textContent=(a.fullName?a.fullName+' · ':'')+a.username+' · '+(a.role==='Admin'?'管理員':'User')+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')+' · '+(a.permissions?.length||0)+' 項權限';p.style.cursor='pointer';p.title='點選帶入帳號與權限';p.addEventListener('click',()=>{card.querySelector('#lotteryNewUser').value=a.username;card.querySelector('#lotteryFullName').value=a.fullName||'';card.querySelector('#lotteryNewRole').value=a.role;fillPerms(a.permissions||[]);if(!managePanel.classList.contains('active'))manageTab.click()});accountList.append(p)}accountMsg.textContent=''}catch(e){accountMsg.textContent='帳號管理 API 尚未啟用：'+e.message}}
-card.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();if(!can('accounts_manage')||mustChange)return;
- const action=card.querySelector('#lotteryAccountAction').value,name=card.querySelector('#lotteryNewUser').value.trim(),password=card.querySelector('#lotteryNewPass').value,fullName=card.querySelector('#lotteryFullName').value.trim(),newRole=card.querySelector('#lotteryNewRole').value;
- const body={action,username:name};if(['create','password'].includes(action))body.password=password;if(['create','name'].includes(action))body.fullName=fullName;if(action==='create'){body.role=newRole;body.permissions=selectedPerms()}if(action==='permissions'){if(!can('permissions_manage')){accountMsg.textContent='沒有修改權限的授權';return}body.permissions=selectedPerms()}
- if(action==='delete'&&!confirm('確定永久刪除 '+name+'？此操作無法復原，原登入立即失效。'))return;if(['disable','password'].includes(action)&&!confirm('確定要變更 '+name+' 的帳號狀態／密碼？'))return;
- const button=card.querySelector('#lotteryAccountSave');button.disabled=true;
- try{await api('/admin/accounts','POST',body);accountMsg.textContent='操作完成';card.querySelector('#lotteryNewPass').value='';await refreshUsers();await loadAccounts()}catch(err){accountMsg.textContent='操作失敗：'+err.message}finally{button.disabled=false}
+const selectedAccount=()=>cachedAccounts.find(a=>a.username===manageSelect.value);
+function showSelectedAccount(){
+ const a=selectedAccount();managePanel.querySelector('#lotteryManageInfo').textContent=a?(a.role+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')):'請選擇現有人員';
+ managePanel.querySelector('#lotteryManageName').value=a?.fullName||'';fillPerms(a?.permissions||[]);
+ const locked=!a||a.username==='Yuan';
+ manageForm.querySelector('button[type=submit]').disabled=locked||!can('accounts_manage');
+ permissionForm.querySelector('button[type=submit]').disabled=locked||!can('permissions_manage');
+ manageForm.classList.toggle('lottery-role-hidden',!can('accounts_manage'));
+ permissionForm.classList.toggle('lottery-role-hidden',!can('permissions_manage'));
+}
+manageSelect.addEventListener('change',showSelectedAccount);
+function showManageAction(){managePassRow.hidden=manageAction.value!=='password'}
+manageAction.addEventListener('change',showManageAction);showManageAction();
+async function refreshUsers(){
+ if(!can('accounts_view')||mustChange)return;
+ try{const data=await api('/admin/accounts');cachedAccounts=Array.isArray(data.accounts)?data.accounts:[];
+ const selected=manageSelect.value;manageSelect.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='請選擇現有人員';manageSelect.append(placeholder);
+ for(const a of cachedAccounts){const opt=document.createElement('option');opt.value=a.username;opt.textContent=(a.fullName?a.fullName+' · ':'')+a.username;manageSelect.append(opt)}
+ manageSelect.value=cachedAccounts.some(a=>a.username===selected)?selected:'';showSelectedAccount();manageMsg.textContent='';
+ }catch(e){manageMsg.textContent='無法載入人員：'+e.message}
+}
+function activateAccountTab(panel,tab){for(const p of panels)p.classList.toggle('active',p===panel);for(const t of tabs)t.classList.toggle('active',t===tab);tab.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'})}
+createTab.addEventListener('click',()=>{if(!createTab.classList.contains('lottery-role-hidden'))activateAccountTab(createPanel,createTab)});
+manageTab.addEventListener('click',()=>{if(!manageTab.classList.contains('lottery-role-hidden')){activateAccountTab(managePanel,manageTab);refreshUsers()}});
+for(const t of tabs.filter(t=>t!==createTab&&t!==manageTab))t.addEventListener('click',()=>{createPanel.classList.remove('active');managePanel.classList.remove('active');createTab.classList.remove('active');manageTab.classList.remove('active')});
+createForm.addEventListener('submit',async e=>{
+ e.preventDefault();if(!can('accounts_manage')||mustChange)return;
+ const username=createPanel.querySelector('#lotteryCreateUser').value.trim(),fullName=createPanel.querySelector('#lotteryCreateName').value.trim(),role=createPanel.querySelector('#lotteryCreateRole').value,password=createPanel.querySelector('#lotteryCreatePass').value;
+ if(!/^[0-9]{4}$/.test(password)){createMsg.textContent='臨時密碼必須為 4 位數字';return}
+ const button=createForm.querySelector('button[type=submit]');button.disabled=true;
+ try{await api('/admin/accounts','POST',{action:'create',username,fullName,role,password,permissions:role==='Admin'?ALL_PERMS.map(x=>x[0]):['redeem']});createMsg.textContent='帳號建立完成，可到帳號管理調整權限';createForm.reset();await loadAccounts();if(can('accounts_view'))await refreshUsers()}catch(err){createMsg.textContent='建立失敗：'+err.message}finally{button.disabled=false}
+});
+manageForm.addEventListener('submit',async e=>{
+ e.preventDefault();const a=selectedAccount();if(!a||a.username==='Yuan'||!can('accounts_manage'))return;
+ const action=manageAction.value,body={action,username:a.username};if(action==='name')body.fullName=managePanel.querySelector('#lotteryManageName').value.trim();
+ if(action==='password'){body.password=managePanel.querySelector('#lotteryManagePass').value;if(!/^[0-9]{4}$/.test(body.password)){manageMsg.textContent='請輸入 4 位數臨時密碼';return}}
+ if(action==='delete'&&!confirm('確定永久刪除 '+a.username+'？此操作無法復原。'))return;
+ if(['disable','password'].includes(action)&&!confirm('確定變更 '+a.username+'？'))return;
+ const button=manageForm.querySelector('button[type=submit]');button.disabled=true;
+ try{await api('/admin/accounts','POST',body);manageMsg.textContent='操作完成';managePanel.querySelector('#lotteryManagePass').value='';await refreshUsers();await loadAccounts()}catch(err){manageMsg.textContent='操作失敗：'+err.message}finally{button.disabled=false}
+});
+permissionForm.addEventListener('submit',async e=>{
+ e.preventDefault();const a=selectedAccount();if(!a||a.username==='Yuan'||!can('permissions_manage'))return;
+ const button=permissionForm.querySelector('button[type=submit]');button.disabled=true;
+ try{await api('/admin/accounts','POST',{action:'permissions',username:a.username,permissions:selectedPerms()});permMsg.textContent='個別權限已儲存';await refreshUsers()}catch(err){permMsg.textContent='儲存失敗：'+err.message}finally{button.disabled=false}
 });
 setAuth(null);loadAccounts();
 })();
