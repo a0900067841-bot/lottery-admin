@@ -1,6 +1,5 @@
-// yijia-lottery-api — existing config sync plus Admin/User accounts.
-// No prize issuance or real redemption endpoints in this version.
-const configKey='device:config', ackKey='device:ack', SESSION_SECONDS=7*86400;
+// yijia-lottery-api — account management v0.1.18; existing device config API retained.
+const configKey='device:config',ackKey='device:ack',SESSION_SECONDS=7*86400;
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
 const equal=(a,b)=>{if(typeof a!=='string'||typeof b!=='string')return false;let d=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)d|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return d===0};
 const int=(n,min,max)=>Number.isSafeInteger(n)&&n>=min&&n<=max;
@@ -19,6 +18,9 @@ const sessionKey=async token=>'auth:session:'+await sha256(token);
 const bearer=req=>{const h=req.headers.get('Authorization')||'';return h.startsWith('Bearer ')?h.slice(7):''};
 const accountKey=name=>'auth:account:'+name;
 const validName=name=>typeof name==='string'&&/^[A-Za-z0-9_-]{3,24}$/.test(name)&&name!=='Yuan';
+const validFullName=name=>typeof name==='string'&&name.trim().length>=1&&name.trim().length<=40;
+const validTemp=p=>typeof p==='string'&&/^\d{4}$/.test(p);
+const validPermanent=p=>typeof p==='string'&&p.length>=8&&p.length<=12;
 async function derive(password,salt){
  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:100000,hash:'SHA-256'},key,256);
@@ -27,16 +29,18 @@ async function derive(password,salt){
 async function identity(req,env){
  const token=bearer(req);if(!/^[a-f0-9]{64}$/.test(token))return null;
  const raw=await env.CONFIG_KV.get(await sessionKey(token));if(!raw)return null;
- if(raw==='Yuan')return {username:'Yuan',role:'Admin'}; // existing sessions
+ if(raw==='Yuan')return {username:'Yuan',role:'Admin',mustChange:false};
  let session;try{session=JSON.parse(raw)}catch{return null}
- if(session?.username==='Yuan'&&session.role==='Admin')return {username:'Yuan',role:'Admin'};
- if(session?.role!=='User'||!validName(session.username))return null;
+ if(session?.username==='Yuan'&&session.role==='Admin')return {username:'Yuan',role:'Admin',mustChange:false};
+ if(!validName(session?.username))return null;
  const a=await env.CONFIG_KV.get(accountKey(session.username),'json');
- return a&&!a.disabled&&a.version===session.version?{username:session.username,role:'User'}:null;
+ if(!a||a.disabled||a.version!==session.version)return null;
+ const role=a.role==='Admin'?'Admin':'User';
+ return {username:session.username,role,mustChange:!!a.mustChange};
 }
 async function isAdmin(req,env){
  if(equal(req.headers.get('Authorization')||'','Bearer '+env.ADMIN_API_KEY))return true;
- return (await identity(req,env))?.role==='Admin';
+ const u=await identity(req,env);return u?.role==='Admin'&&!u.mustChange;
 }
 async function readJSON(req,max=2048){
  if(Number(req.headers.get('content-length')||0)>max)throw Error('Too large');
@@ -44,7 +48,7 @@ async function readJSON(req,max=2048){
  return JSON.parse(raw);
 }
 async function accounts(env,publicOnly=false){
- const out=publicOnly?['Yuan']:[{username:'Yuan',role:'Admin',disabled:false}];
+ const out=publicOnly?['Yuan']:[{username:'Yuan',fullName:'Yuan',role:'Admin',disabled:false,mustChange:false,protected:true}];
  let cursor;
  do{
   const page=await env.CONFIG_KV.list({prefix:'auth:account:',limit:100,...(cursor?{cursor}:{})});
@@ -52,12 +56,13 @@ async function accounts(env,publicOnly=false){
    const a=await env.CONFIG_KV.get(k.name,'json');if(!a)continue;
    const username=k.name.slice('auth:account:'.length);
    if(publicOnly){if(!a.disabled)out.push(username)}
-   else out.push({username,role:'User',disabled:!!a.disabled});
+   else out.push({username,fullName:a.fullName||'',role:a.role==='Admin'?'Admin':'User',disabled:!!a.disabled,mustChange:!!a.mustChange});
   }
   cursor=page.list_complete?null:page.cursor;
  }while(cursor);
  return out;
 }
+const attemptKey=async username=>'auth:attempt:'+await sha256(username);
 export default {async fetch(request,env){
  const origin=request.headers.get('Origin');
  const allowed=(env.ADMIN_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -73,17 +78,23 @@ export default {async fetch(request,env){
   if(path==='/auth/accounts'&&request.method==='GET')return json({accounts:await accounts(env,true)},200,cors);
   if(path==='/auth/login'&&request.method==='POST'){
    if(!env.ADMIN_LOGIN_PASSWORD)return json({error:'Login not configured'},503,cors);
-   const body=await readJSON(request);
-   let user=null,version=0;
-   if(body?.username==='Yuan'&&typeof body.password==='string'&&equal(body.password,env.ADMIN_LOGIN_PASSWORD))user={username:'Yuan',role:'Admin'};
-   else if(validName(body?.username)&&typeof body.password==='string'){
-    const a=await env.CONFIG_KV.get(accountKey(body.username),'json');
-    if(a&&!a.disabled&&typeof a.salt==='string'&&typeof a.hash==='string'&&equal(await derive(body.password,a.salt),a.hash)){user={username:body.username,role:'User'};version=a.version}
+   const body=await readJSON(request),name=body?.username;
+   if(typeof name!=='string'||typeof body.password!=='string')return json({error:'帳號或密碼錯誤'},401,cors);
+   const lockKey=await attemptKey(name),attempt=await env.CONFIG_KV.get(lockKey,'json');
+   if(attempt?.until>Date.now())return json({error:'登入失敗次數過多，請稍後再試'},429,cors);
+   let user=null,version=0,mustChange=false;
+   if(name==='Yuan'&&equal(body.password,env.ADMIN_LOGIN_PASSWORD))user={username:'Yuan',role:'Admin'};
+   else if(validName(name)){
+    const a=await env.CONFIG_KV.get(accountKey(name),'json');
+    if(a&&!a.disabled&&typeof a.salt==='string'&&typeof a.hash==='string'&&equal(await derive(body.password,a.salt),a.hash)){
+     user={username:name,role:a.role==='Admin'?'Admin':'User'};version=a.version;mustChange=!!a.mustChange;
+    }
    }
-   if(!user)return json({error:'帳號或密碼錯誤'},401,cors);
+   if(!user){const count=(attempt?.count||0)+1;await env.CONFIG_KV.put(lockKey,JSON.stringify({count:count>=5?0:count,until:count>=5?Date.now()+15*60000:0}),{expirationTtl:900});return json({error:'帳號或密碼錯誤'},401,cors)}
+   await env.CONFIG_KV.delete(lockKey);
    const token=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
    await env.CONFIG_KV.put(await sessionKey(token),JSON.stringify({...user,version}),{expirationTtl:SESSION_SECONDS});
-   return json({ok:true,token,expiresIn:SESSION_SECONDS,...user},200,cors);
+   return json({ok:true,token,expiresIn:SESSION_SECONDS,...user,mustChange},200,cors);
   }
   if(path==='/auth/me'&&request.method==='GET'){
    const u=await identity(request,env);return u?json({ok:true,...u},200,cors):json({error:'Unauthorized'},401,cors);
@@ -92,18 +103,39 @@ export default {async fetch(request,env){
    const token=bearer(request);if(/^[a-f0-9]{64}$/.test(token))await env.CONFIG_KV.delete(await sessionKey(token));
    return json({ok:true},200,cors);
   }
+  if(path==='/auth/change-password'&&request.method==='POST'){
+   const u=await identity(request,env);
+   if(!u||u.username==='Yuan')return json({error:'Unauthorized'},401,cors);
+   const body=await readJSON(request);
+   if(!validPermanent(body?.newPassword))return json({error:'正式密碼必須為 8～12 位'},400,cors);
+   const key=accountKey(u.username),a=await env.CONFIG_KV.get(key,'json');
+   if(!a||!equal(await derive(body?.currentPassword||'',a.salt),a.hash))return json({error:'目前密碼錯誤'},401,cors);
+   if(body.currentPassword===body.newPassword)return json({error:'新密碼不可與臨時密碼相同'},400,cors);
+   const salt=crypto.randomUUID(),hash=await derive(body.newPassword,salt);
+   await env.CONFIG_KV.put(key,JSON.stringify({...a,salt,hash,mustChange:false,version:(a.version||0)+1}));
+   const token=bearer(request);await env.CONFIG_KV.delete(await sessionKey(token));
+   return json({ok:true,relogin:true},200,cors);
+  }
   if(path.startsWith('/admin/')&&!(await isAdmin(request,env)))return json({error:'Unauthorized'},401,cors);
   if(path==='/admin/accounts'&&request.method==='GET')return json({accounts:await accounts(env)},200,cors);
   if(path==='/admin/accounts'&&request.method==='POST'){
    const body=await readJSON(request,1024);
-   if(!validName(body?.username)||!['create','password','disable','enable'].includes(body?.action))return json({error:'Invalid account or action'},400,cors);
+   if(!validName(body?.username)||!['create','password','disable','enable','name'].includes(body?.action))return json({error:'Invalid account or action'},400,cors);
    const key=accountKey(body.username),old=await env.CONFIG_KV.get(key,'json');
    if(body.action==='create'&&old)return json({error:'Account exists'},409,cors);
    if(body.action!=='create'&&!old)return json({error:'Account not found'},404,cors);
-   if(['create','password'].includes(body.action)){
-    if(typeof body.password!=='string'||body.password.length<12||body.password.length>128)return json({error:'Password must be 12-128 characters'},400,cors);
+   if(body.action==='create'){
+    if(!validFullName(body.fullName)||!['Admin','User'].includes(body.role))return json({error:'請填寫姓名並選擇帳號權限'},400,cors);
+    if(!validTemp(body.password))return json({error:'臨時密碼必須為 4 位數字'},400,cors);
     const salt=crypto.randomUUID(),hash=await derive(body.password,salt);
-    await env.CONFIG_KV.put(key,JSON.stringify({salt,hash,disabled:old?.disabled||false,version:(old?.version||0)+1}));
+    await env.CONFIG_KV.put(key,JSON.stringify({salt,hash,fullName:body.fullName.trim(),role:body.role,disabled:false,mustChange:true,version:1}));
+   }else if(body.action==='password'){
+    if(!validTemp(body.password))return json({error:'臨時密碼必須為 4 位數字'},400,cors);
+    const salt=crypto.randomUUID(),hash=await derive(body.password,salt);
+    await env.CONFIG_KV.put(key,JSON.stringify({...old,salt,hash,mustChange:true,version:(old.version||0)+1}));
+   }else if(body.action==='name'){
+    if(!validFullName(body.fullName))return json({error:'請輸入姓名（1～40 字）'},400,cors);
+    await env.CONFIG_KV.put(key,JSON.stringify({...old,fullName:body.fullName.trim()}));
    }else await env.CONFIG_KV.put(key,JSON.stringify({...old,disabled:body.action==='disable',version:(old.version||0)+1}));
    return json({ok:true},200,cors);
   }
