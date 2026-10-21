@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.20 - single-row navigation and separate create/manage account tabs.
+// v0.1.21 - fixed login initialization; single-row navigation and separate create/manage account tabs.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -128,7 +128,7 @@ manageTab.addEventListener('click',()=>{if(!manageTab.classList.contains('lotter
 for(const t of tabs.filter(t=>t!==createTab&&t!==manageTab))t.addEventListener('click',()=>{
  createPanel.classList.remove('active');managePanel.classList.remove('active');createTab.classList.remove('active');manageTab.classList.remove('active');
 });
-createMode();createTab.classList.add('lottery-role-hidden');manageTab.classList.add('lottery-role-hidden');bindEyes(card);
+createTab.classList.add('lottery-role-hidden');manageTab.classList.add('lottery-role-hidden');bindEyes(card);
 const accountList=card.querySelector('#lotteryAccountList'),accountMsg=card.querySelector('#lotteryAccountMsg');
 const permBox=card.querySelector('#lotteryPerms');
 for(const [id,label] of ALL_PERMS){const row=document.createElement('label');row.style.display='block';const check=document.createElement('input');check.type='checkbox';check.value=id;check.style.width='auto';check.style.marginRight='8px';row.append(check,document.createTextNode(label));permBox.append(row)}
