@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.19 - account names, Admin/User, temporary passwords, forced changes, password visibility.
+// v0.1.20 - single-row navigation and separate create/manage account tabs.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -17,6 +17,8 @@ const css=document.createElement('style');css.textContent=`
 #lotteryAuthGate .submit{width:100%;background:#155eef;color:#fff;border:0;margin-top:12px;padding:12px;border-radius:8px}
 #lotteryAuthGate p{font-size:14px;line-height:1.6}#lotteryAuthBar{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin:10px 15px}
 #lotteryAccountCard input,#lotteryAccountCard select{width:100%;max-width:450px}#lotteryAccountCard .lottery-passrow{max-width:450px}
+nav{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x}nav::-webkit-scrollbar{display:none}nav button{flex:0 0 auto;white-space:nowrap}
+#lotteryCreatePanel,#lotteryManagePanel{min-width:0}#lotteryAccountCard{margin-top:0}#lotteryAccountCard fieldset{border:1px solid #dce5f1;border-radius:10px;margin:15px 0;padding:12px}#lotteryAccountCard fieldset label{font-weight:400;margin:9px 0}
 `;document.head.append(css);
 const gate=document.createElement('div');gate.id='lotteryAuthGate';gate.innerHTML=`
 <form id="lotteryLoginForm"><h2>電子抽獎機｜帳號登入</h2><p>每次開啟網站都需要登入。</p>
@@ -44,11 +46,13 @@ const panels=Array.from(document.querySelectorAll('.panel')),tabs=Array.from(doc
 function bindEyes(root){for(const row of root.querySelectorAll('.lottery-passrow')){const input=row.querySelector('input'),btn=row.querySelector('button');btn.addEventListener('click',()=>{input.type=input.type==='password'?'text':'password';btn.setAttribute('aria-label',input.type==='password'?'顯示密碼':'隱藏密碼');btn.textContent=input.type==='password'?'👁️':'🙈'})}}
 bindEyes(gate);
 function showRole(){
- const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem'};
+ const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',createAccount:'accounts_manage',manageAccount:'accounts_view'};
  for(const tab of tabs)tab.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[tab.dataset.tab]));
  for(const panel of panels)panel.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[panel.id]));
  const accountAllowed=token&&!mustChange&&can('accounts_view');
- card.classList.toggle('lottery-role-hidden',!accountAllowed);
+ card.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
+ createPanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
+ managePanel.classList.toggle('lottery-role-hidden',!accountAllowed);
  if(accountAllowed){card.querySelector('#lotteryAccountForm').classList.toggle('lottery-role-hidden',!can('accounts_manage'));}
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
  for(const id of ['prizeForm','clearEdit']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('prizes_edit'))}
@@ -90,7 +94,41 @@ card.innerHTML=`<h2>帳號管理（Admin）</h2><p class="muted">新增 Admin／
 <label>4 位數臨時密碼</label><div class="lottery-passrow"><input id="lotteryNewPass" type="password" minlength="4" maxlength="4" inputmode="numeric" autocomplete="new-password"><button type="button" class="lottery-eye" aria-label="顯示密碼">👁️</button></div>
 <label>操作<select id="lotteryAccountAction"><option value="create">建立帳號</option><option value="password">重設臨時密碼</option><option value="name">修改姓名</option><option value="disable">停用帳號</option><option value="enable">啟用帳號</option><option value="permissions">設定個別權限</option><option value="delete">永久刪除人員</option></select></label>
 <fieldset id="lotteryPerms"><legend>個別權限（未勾選的功能完全隱藏）</legend></fieldset><button type="submit" class="primary" id="lotteryAccountSave">執行</button><p id="lotteryAccountMsg" role="status"></p></form>`;
-if(dash)dash.append(card);bindEyes(card);
+// Keep the original form and handlers; move it between the two dedicated tabs.
+const main=document.querySelector('main');
+const createPanel=document.createElement('section');createPanel.id='createAccount';createPanel.className='panel';
+const managePanel=document.createElement('section');managePanel.id='manageAccount';managePanel.className='panel';
+main.append(createPanel,managePanel);
+const createTab=document.createElement('button');createTab.type='button';createTab.dataset.tab='createAccount';createTab.textContent='建立帳號';
+const manageTab=document.createElement('button');manageTab.type='button';manageTab.dataset.tab='manageAccount';manageTab.textContent='帳號管理';
+nav.append(createTab,manageTab);tabs.push(createTab,manageTab);panels.push(createPanel,managePanel);
+const cardHeading=card.querySelector('h2');
+const list=card.querySelector('#lotteryAccountList');
+const form=card.querySelector('#lotteryAccountForm');
+const actionSelect=card.querySelector('#lotteryAccountAction');
+const managementList=document.createElement('div');managementList.className='card';
+managementList.innerHTML='<h2>現有人員</h2>';
+managementList.append(list);
+managePanel.append(managementList);
+createPanel.append(card);
+const userInput=card.querySelector('#lotteryNewUser');
+const createMode=()=>{cardHeading.textContent='建立帳號';actionSelect.value='create';actionSelect.closest('label').hidden=true;permBox.hidden=false;userInput.placeholder='輸入新帳號';};
+const manageMode=()=>{cardHeading.textContent='帳號管理';actionSelect.closest('label').hidden=false;actionSelect.value='permissions';permBox.hidden=false;userInput.placeholder='輸入現有帳號';};
+function activateAccountTab(which){
+ const panel=which==='create'?createPanel:managePanel,tab=which==='create'?createTab:manageTab;
+ panel.append(card);
+ if(which==='manage')managePanel.prepend(managementList);
+ if(which==='create')createMode();else manageMode();
+ for(const p of panels)p.classList.toggle('active',p===panel);
+ for(const t of tabs)t.classList.toggle('active',t===tab);
+ tab.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});
+}
+createTab.addEventListener('click',()=>{if(!createTab.classList.contains('lottery-role-hidden'))activateAccountTab('create')});
+manageTab.addEventListener('click',()=>{if(!manageTab.classList.contains('lottery-role-hidden'))activateAccountTab('manage')});
+for(const t of tabs.filter(t=>t!==createTab&&t!==manageTab))t.addEventListener('click',()=>{
+ createPanel.classList.remove('active');managePanel.classList.remove('active');createTab.classList.remove('active');manageTab.classList.remove('active');
+});
+createMode();createTab.classList.add('lottery-role-hidden');manageTab.classList.add('lottery-role-hidden');bindEyes(card);
 const accountList=card.querySelector('#lotteryAccountList'),accountMsg=card.querySelector('#lotteryAccountMsg');
 const permBox=card.querySelector('#lotteryPerms');
 for(const [id,label] of ALL_PERMS){const row=document.createElement('label');row.style.display='block';const check=document.createElement('input');check.type='checkbox';check.value=id;check.style.width='auto';check.style.marginRight='8px';row.append(check,document.createTextNode(label));permBox.append(row)}
@@ -100,7 +138,9 @@ const fillPerms=p=>{for(const el of permBox.querySelectorAll('input'))el.checked
 card.querySelector('#lotteryNewUser').addEventListener('change',()=>{const old=cachedAccounts.find(x=>x.username===card.querySelector('#lotteryNewUser').value.trim());if(old)fillPerms(old.permissions||[])});
 card.querySelector('#lotteryNewRole').addEventListener('change',e=>fillPerms(e.target.value==='Admin'?ALL_PERMS.map(x=>x[0]):['redeem']));
 fillPerms(['redeem']);
-async function refreshUsers(){if(!can('accounts_view')||mustChange)return;try{const data=await api('/admin/accounts');cachedAccounts=data.accounts;accountList.replaceChildren();for(const a of data.accounts){const p=document.createElement('p');p.textContent=(a.fullName?a.fullName+' · ':'')+a.username+' · '+(a.role==='Admin'?'管理員':'User')+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')+' · '+(a.permissions?.length||0)+' 項權限';accountList.append(p)}accountMsg.textContent=''}catch(e){accountMsg.textContent='帳號管理 API 尚未啟用：'+e.message}}
+const updatePermVisibility=()=>{permBox.hidden=!['create','permissions'].includes(actionSelect.value);};
+actionSelect.addEventListener('change',updatePermVisibility);updatePermVisibility();
+async function refreshUsers(){if(!can('accounts_view')||mustChange)return;try{const data=await api('/admin/accounts');cachedAccounts=data.accounts;accountList.replaceChildren();for(const a of data.accounts){const p=document.createElement('p');p.textContent=(a.fullName?a.fullName+' · ':'')+a.username+' · '+(a.role==='Admin'?'管理員':'User')+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')+' · '+(a.permissions?.length||0)+' 項權限';p.style.cursor='pointer';p.title='點選帶入帳號與權限';p.addEventListener('click',()=>{card.querySelector('#lotteryNewUser').value=a.username;card.querySelector('#lotteryFullName').value=a.fullName||'';card.querySelector('#lotteryNewRole').value=a.role;fillPerms(a.permissions||[]);if(!managePanel.classList.contains('active'))manageTab.click()});accountList.append(p)}accountMsg.textContent=''}catch(e){accountMsg.textContent='帳號管理 API 尚未啟用：'+e.message}}
 card.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();if(!can('accounts_manage')||mustChange)return;
  const action=card.querySelector('#lotteryAccountAction').value,name=card.querySelector('#lotteryNewUser').value.trim(),password=card.querySelector('#lotteryNewPass').value,fullName=card.querySelector('#lotteryFullName').value.trim(),newRole=card.querySelector('#lotteryNewRole').value;
  const body={action,username:name};if(['create','password'].includes(action))body.password=password;if(['create','name'].includes(action))body.fullName=fullName;if(action==='create'){body.role=newRole;body.permissions=selectedPerms()}if(action==='permissions'){if(!can('permissions_manage')){accountMsg.textContent='沒有修改權限的授權';return}body.permissions=selectedPerms()}
