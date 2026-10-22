@@ -27,7 +27,7 @@ const defaults=role=>role==='Admin'?['dashboard','prizes_view','prizes_edit','ti
 const permitted=(u,p)=>!!u&&(u.username==='Yuan'||(!u.mustChange&&(u.role==='Admin'||USER_PERMS.includes(p))&&u.permissions?.includes(p)));
 const normalized=a=>{const allowed=a.role==='Admin'?PERMS:USER_PERMS;return Array.isArray(a.permissions)?allowed.filter(p=>a.permissions.includes(p)):defaults(a.role)};
 const validPerms=p=>Array.isArray(p)&&p.length<=PERMS.length&&p.every(x=>PERMS.includes(x))&&new Set(p).size===p.length;
-const USER_PERMS=['prizes_view', 'ticket_view', 'redeem', 'redeem_history'];
+const USER_PERMS=['prizes_view', 'redeem', 'redeem_history'];
 const validRolePerms=(p,role)=>validPerms(p)&&(role==='Admin'||p.every(x=>USER_PERMS.includes(x)));
 
 
