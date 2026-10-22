@@ -1,4 +1,3 @@
-
 name = "yijia-lottery-api"
 main = "worker.js"
 compatibility_date = "2026-10-21"
@@ -6,6 +5,11 @@ compatibility_date = "2026-10-21"
 [[kv_namespaces]]
 binding = "CONFIG_KV"
 id = "201a9a3338384133935a23db1edafd5e"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "yijia-lottery-db"
+database_id = "a7b7e642-516c-498e-a3ee-bd8cad393bd0"
 
 [vars]
 ADMIN_ORIGINS = "https://a0900067841-bot.github.io"
