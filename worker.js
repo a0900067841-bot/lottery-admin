@@ -1,4 +1,4 @@
-// yijia-lottery-api — account management v0.1.19; existing device config API retained.
+// yijia-lottery-api — account management v0.1.25; existing device config API retained.
 const configKey='device:config',ackKey='device:ack',SESSION_SECONDS=7*86400;
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
 const equal=(a,b)=>{if(typeof a!=='string'||typeof b!=='string')return false;let d=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)d|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return d===0};
@@ -22,11 +22,14 @@ const validFullName=name=>typeof name==='string'&&name.trim().length>=1&&name.tr
 const validTemp=p=>typeof p==='string'&&/^\d{4}$/.test(p);
 const validPermanent=p=>typeof p==='string'&&p.length>=8&&p.length<=12;
 
-const PERMS=['dashboard','prizes_view','prizes_edit','ticket_view','ticket_edit','device_sync','sound_settings','device_config_view','redeem','redeem_history','accounts_view','accounts_manage','permissions_manage'];
+const PERMS=['dashboard','prizes_view','prizes_edit','ticket_view','ticket_edit','device_sync','print_prep','sound_settings','device_config_view','redeem','redeem_history','accounts_view','accounts_manage','permissions_manage'];
 const defaults=role=>role==='Admin'?['dashboard','prizes_view','prizes_edit','ticket_view','ticket_edit','device_sync','redeem','redeem_history','accounts_view','accounts_manage','permissions_manage']:['redeem'];
-const permitted=(u,p)=>!!u&&(u.username==='Yuan'||(!u.mustChange&&u.permissions?.includes(p)));
-const normalized=a=>Array.isArray(a.permissions)?PERMS.filter(p=>a.permissions.includes(p)):defaults(a.role);
+const permitted=(u,p)=>!!u&&(u.username==='Yuan'||(!u.mustChange&&(u.role==='Admin'||USER_PERMS.includes(p))&&u.permissions?.includes(p)));
+const normalized=a=>{const allowed=a.role==='Admin'?PERMS:USER_PERMS;return Array.isArray(a.permissions)?allowed.filter(p=>a.permissions.includes(p)):defaults(a.role)};
 const validPerms=p=>Array.isArray(p)&&p.length<=PERMS.length&&p.every(x=>PERMS.includes(x))&&new Set(p).size===p.length;
+const USER_PERMS=['prizes_view', 'ticket_view', 'redeem', 'redeem_history'];
+const validRolePerms=(p,role)=>validPerms(p)&&(role==='Admin'||p.every(x=>USER_PERMS.includes(x)));
+
 
 async function derive(password,salt){
  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
@@ -138,7 +141,7 @@ export default {async fetch(request,env){
    if(body.action==='permissions'){
     const actor=await identity(request,env);
     if(!permitted(actor,'permissions_manage'))return json({error:'Forbidden'},403,cors);
-    if(!validPerms(body.permissions))return json({error:'權限資料不正確'},400,cors);
+    if(!validRolePerms(body.permissions,old.role))return json({error:'此帳號角色不允許使用指定權限'},400,cors);
     await env.CONFIG_KV.put(key,JSON.stringify({...old,permissions:body.permissions,version:(old.version||0)+1}));
    }else if(body.action==='delete'){
     const actor=await identity(request,env);
@@ -149,7 +152,7 @@ export default {async fetch(request,env){
     if(!validFullName(body.fullName)||!['Admin','User'].includes(body.role))return json({error:'請填寫姓名並選擇帳號權限'},400,cors);
     if(!validTemp(body.password))return json({error:'臨時密碼必須為 4 位數字'},400,cors);
     const salt=crypto.randomUUID(),hash=await derive(body.password,salt);
-    await env.CONFIG_KV.put(key,JSON.stringify({salt,hash,fullName:body.fullName.trim(),role:body.role,disabled:false,mustChange:true,permissions:validPerms(body.permissions)?body.permissions:defaults(body.role),version:1}));
+    await env.CONFIG_KV.put(key,JSON.stringify({salt,hash,fullName:body.fullName.trim(),role:body.role,disabled:false,mustChange:true,permissions:validRolePerms(body.permissions,body.role)?body.permissions:defaults(body.role),version:1}));
    }else if(body.action==='password'){
     if(!validTemp(body.password))return json({error:'臨時密碼必須為 4 位數字'},400,cors);
     const salt=crypto.randomUUID(),hash=await derive(body.password,salt);

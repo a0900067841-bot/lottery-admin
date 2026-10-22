@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.24 - independent sound and device config permissions.
+// v0.1.25 - independent sound and device config permissions.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -43,8 +43,9 @@ const nav=document.querySelector('nav');if(nav)nav.before(bar);else document.bod
 const username=gate.querySelector('#lotteryUsername'),pw=gate.querySelector('#lotteryPassword'),remember=gate.querySelector('#lotteryRemember'),msg=gate.querySelector('#lotteryLoginMessage'),loginBtn=gate.querySelector('#lotteryLoginButton');
 let token='',role='',currentName='',mustChange=false,permissions=[];
 window.lotteryCan=p=>!!token&&!mustChange&&can(p);
-const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['prizes_edit','修改獎項'],['ticket_view','查看獎券模板'],['ticket_edit','修改獎券模板'],['device_sync','設備雲端同步'],['sound_settings','蜂鳴器設定'],['device_config_view','完整設備設定檔'],['redeem','獎券核銷'],['redeem_history','查詢核銷紀錄（預留）'],['accounts_view','查看人員'],['accounts_manage','建立／停用／刪除人員'],['permissions_manage','修改人員權限']];
-const can=p=>currentName==='Yuan'||permissions.includes(p);
+const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['prizes_edit','修改獎項'],['ticket_view','查看獎券模板'],['ticket_edit','修改獎券模板'],['device_sync','設備雲端同步'],['print_prep','列印前置狀態'],['sound_settings','蜂鳴器設定'],['device_config_view','完整設備設定檔'],['redeem','獎券核銷'],['redeem_history','查詢核銷紀錄（預留）'],['accounts_view','查看人員'],['accounts_manage','建立／停用／刪除人員'],['permissions_manage','修改人員權限']];
+const USER_PERMS=['prizes_view', 'ticket_view', 'redeem', 'redeem_history'];
+const can=p=>currentName==='Yuan'||((role==='Admin'||USER_PERMS.includes(p))&&permissions.includes(p));
 const panels=Array.from(document.querySelectorAll('.panel')),tabs=Array.from(document.querySelectorAll('nav button'));
 function bindEyes(root){for(const row of root.querySelectorAll('.lottery-passrow')){const input=row.querySelector('input'),btn=row.querySelector('button');btn.addEventListener('click',()=>{input.type=input.type==='password'?'text':'password';btn.setAttribute('aria-label',input.type==='password'?'顯示密碼':'隱藏密碼');btn.textContent=input.type==='password'?'👁️':'🙈'})}}
 bindEyes(gate);
@@ -57,12 +58,14 @@ document.addEventListener('click',e=>{
 
 function showRole(){
  const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',createAccount:'accounts_manage',manageAccount:'accounts_view'};
- for(const tab of tabs)tab.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[tab.dataset.tab]));
- for(const panel of panels)panel.classList.toggle('lottery-role-hidden',!token||mustChange||!can(mapping[panel.id]));
+ const ticketAccess=['ticket_view','ticket_edit','device_sync','sound_settings','print_prep','device_config_view'].some(can);
+ for(const tab of tabs)tab.classList.toggle('lottery-role-hidden',!token||mustChange||!(tab.dataset.tab==='ticket'?ticketAccess:can(mapping[tab.dataset.tab])));
+ for(const panel of panels)panel.classList.toggle('lottery-role-hidden',!token||mustChange||!(panel.id==='ticket'?ticketAccess:can(mapping[panel.id])));
  createPanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
  managePanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_view'));
  if(token&&!mustChange)showSelectedAccount();
  for(const [id,perm] of [['lotterySoundCard','sound_settings'],['lotteryDeviceConfigCard','device_config_view']]){const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm))}
+ for(const [id,perm] of [['lotteryPrintPrepCard','print_prep'],['lotteryTicketTemplateCard','ticket_view']]){const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm))}
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
  for(const id of ['prizeForm','clearEdit']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('prizes_edit'))}
  for(const id of ['ticketForm']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('ticket_edit'))}
@@ -122,12 +125,13 @@ const manageSelect=managePanel.querySelector('#lotteryManageSelect'),manageActio
 for(const [id,label] of ALL_PERMS){const row=document.createElement('label');row.style.display='block';row.style.fontWeight='400';const check=document.createElement('input');check.type='checkbox';check.value=id;check.style.width='auto';check.style.display='inline-block';check.style.marginRight='8px';row.append(check,document.createTextNode(label));permBox.append(row)}
 bindEyes(createPanel);bindEyes(managePanel);
 let cachedAccounts=[];
-const selectedPerms=()=>Array.from(permBox.querySelectorAll('input:checked'),x=>x.value);
+const selectedPerms=()=>Array.from(permBox.querySelectorAll('input:checked:not(:disabled)'),x=>x.value);
 const fillPerms=p=>{for(const el of permBox.querySelectorAll('input'))el.checked=p.includes(el.value)};
 const selectedAccount=()=>cachedAccounts.find(a=>a.username===manageSelect.value);
 function showSelectedAccount(){
  const a=selectedAccount();managePanel.querySelector('#lotteryManageInfo').textContent=a?(a.role+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')):'請選擇現有人員';
  managePanel.querySelector('#lotteryManageName').value=a?.fullName||'';fillPerms(a?.permissions||[]);
+ for(const el of permBox.querySelectorAll('input')){const allowed=!a||a.role==='Admin'||USER_PERMS.includes(el.value);el.closest('label').hidden=!allowed;el.disabled=!allowed;if(!allowed)el.checked=false}
  const locked=!a||a.username==='Yuan';
  manageForm.querySelector('button[type=submit]').disabled=locked||!can('accounts_manage');
  permissionForm.querySelector('button[type=submit]').disabled=locked||!can('permissions_manage');
@@ -154,7 +158,7 @@ createForm.addEventListener('submit',async e=>{
  const username=createPanel.querySelector('#lotteryCreateUser').value.trim(),fullName=createPanel.querySelector('#lotteryCreateName').value.trim(),role=createPanel.querySelector('#lotteryCreateRole').value,password=createPanel.querySelector('#lotteryCreatePass').value;
  if(!/^[0-9]{4}$/.test(password)){createMsg.textContent='臨時密碼必須為 4 位數字';return}
  const button=createForm.querySelector('button[type=submit]');button.disabled=true;
- try{await api('/admin/accounts','POST',{action:'create',username,fullName,role,password,permissions:role==='Admin'?ALL_PERMS.map(x=>x[0]):['redeem']});createMsg.textContent='帳號建立完成，可到帳號管理調整權限';createForm.reset();await loadAccounts();if(can('accounts_view'))await refreshUsers()}catch(err){createMsg.textContent='建立失敗：'+err.message}finally{button.disabled=false}
+ try{await api('/admin/accounts','POST',{action:'create',username,fullName,role,password,permissions:role==='Admin'?['dashboard','prizes_view','prizes_edit','ticket_view','ticket_edit','redeem','redeem_history','accounts_view','accounts_manage','permissions_manage']:['redeem']});createMsg.textContent='帳號建立完成，可到帳號管理調整權限';createForm.reset();await loadAccounts();if(can('accounts_view'))await refreshUsers()}catch(err){createMsg.textContent='建立失敗：'+err.message}finally{button.disabled=false}
 });
 manageForm.addEventListener('submit',async e=>{
  e.preventDefault();const a=selectedAccount();if(!a||a.username==='Yuan'||!can('accounts_manage'))return;
