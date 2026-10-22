@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.27 - empty permission state and role-specific permission display.
+// v0.1.29 - Yuan highest-admin accidental-change protection.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -19,7 +19,6 @@ const css=document.createElement('style');css.textContent=`
 #lotteryAccountCard input,#lotteryAccountCard select{width:100%;max-width:450px}#lotteryAccountCard .lottery-passrow{max-width:450px}
 nav{flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x}nav::-webkit-scrollbar{display:none}nav button{flex:0 0 auto;white-space:nowrap}
 #lotteryCreatePanel,#lotteryManagePanel{min-width:0}#lotteryAccountCard{margin-top:0}#lotteryAccountCard fieldset{border:1px solid #dce5f1;border-radius:10px;margin:15px 0;padding:12px}#lotteryAccountCard fieldset label{font-weight:400;margin:9px 0}
-
 html.lottery-prizes-readonly #prizeList .prize-row button{display:none!important}
 `;document.head.append(css);
 const gate=document.createElement('div');gate.id='lotteryAuthGate';gate.innerHTML=`
@@ -44,19 +43,17 @@ const username=gate.querySelector('#lotteryUsername'),pw=gate.querySelector('#lo
 let token='',role='',currentName='',mustChange=false,permissions=[];
 window.lotteryCan=p=>!!token&&!mustChange&&can(p);
 const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['prizes_edit','修改獎項'],['ticket_view','查看獎券模板'],['ticket_edit','修改獎券模板'],['device_sync','設備雲端同步'],['print_prep','列印前置狀態'],['sound_settings','蜂鳴器設定'],['device_config_view','完整設備設定檔'],['redeem','獎券核銷'],['redeem_history','查詢核銷紀錄（預留）'],['accounts_view','查看人員'],['accounts_manage','建立／停用／刪除人員'],['permissions_manage','修改人員權限']];
-const USER_PERMS=['prizes_view', 'redeem', 'redeem_history'];
+const USER_PERMS=['prizes_view','redeem','redeem_history'];
 const can=p=>currentName==='Yuan'||((role==='Admin'||USER_PERMS.includes(p))&&permissions.includes(p));
 const panels=Array.from(document.querySelectorAll('.panel')),tabs=Array.from(document.querySelectorAll('nav button'));
 const emptyNotice=document.createElement('section');emptyNotice.id='lotteryNoPermissionNotice';emptyNotice.className='card';emptyNotice.hidden=true;emptyNotice.setAttribute('role','status');emptyNotice.innerHTML='<h2>目前沒有可使用的功能</h2><p>目前帳號尚未開放任何功能，請聯絡管理員設定權限。</p>';document.querySelector('main')?.append(emptyNotice);
 function bindEyes(root){for(const row of root.querySelectorAll('.lottery-passrow')){const input=row.querySelector('input'),btn=row.querySelector('button');btn.addEventListener('click',()=>{input.type=input.type==='password'?'text':'password';btn.setAttribute('aria-label',input.type==='password'?'顯示密碼':'隱藏密碼');btn.textContent=input.type==='password'?'👁️':'🙈'})}}
 bindEyes(gate);
-// Stop prize editing from delegated clicks even if an old button remains in the DOM.
 document.addEventListener('click',e=>{
  if(token&&!mustChange&&can('prizes_edit'))return;
  const button=e.target.closest?.('#prizeList .prize-row button');
  if(button){e.preventDefault();e.stopImmediatePropagation()}
 },true);
-
 function showRole(){
  const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',redeemHistory:'redeem_history',createAccount:'accounts_manage',manageAccount:'accounts_view'};
  const ticketAccess=['ticket_view','ticket_edit','device_sync','sound_settings','print_prep','device_config_view'].some(can);
@@ -65,23 +62,20 @@ function showRole(){
  createPanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
  managePanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_view'));
  if(token&&!mustChange)showSelectedAccount();
- for(const [id,perm] of [['lotterySoundCard','sound_settings'],['lotteryDeviceConfigCard','device_config_view']]){const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm))}
- for(const [id,perm] of [['lotteryPrintPrepCard','print_prep'],['lotteryTicketTemplateCard','ticket_view']]){const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm))}
+ for(const [id,perm] of [['lotterySoundCard','sound_settings'],['lotteryDeviceConfigCard','device_config_view'],['lotteryPrintPrepCard','print_prep'],['lotteryTicketTemplateCard','ticket_view']]){
+  const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm));
+ }
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
  for(const id of ['prizeForm','clearEdit']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('prizes_edit'))}
- for(const id of ['ticketForm']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('ticket_edit'))}
- // Prize list is rendered by app.js, so hide its action buttons for read-only accounts.
+ const form=document.getElementById('ticketForm');if(form)form.classList.toggle('lottery-role-hidden',!can('ticket_edit'));
  document.documentElement.classList.toggle('lottery-prizes-readonly',!token||mustChange||!can('prizes_edit'));
- const prizeDescription=document.getElementById('prizePageDescription');
- if(prizeDescription)prizeDescription.textContent=can('prizes_edit')?'可新增、修改、刪除測試獎項。權重與數量供抽獎邏輯規劃；此版本不會真正扣除庫存。':'可查看目前測試獎項及數量；此帳號沒有新增、修改或刪除獎項的權限。';
-
+ const description=document.getElementById('prizePageDescription');
+ if(description)description.textContent=can('prizes_edit')?'可新增、修改、刪除測試獎項。權重與數量供抽獎邏輯規劃；此版本不會真正扣除庫存。':'可查看目前測試獎項及數量；此帳號沒有新增、修改或刪除獎項的權限。';
  const visible=tabs.filter(x=>!x.classList.contains('lottery-role-hidden'));
  if(visible.length&&!visible.some(x=>x.classList.contains('active')))visible[0].click();
- // If all navigation destinations are denied, show an explanation rather than a blank page.
  const noAccess=!!token&&!mustChange&&visible.length===0;
  emptyNotice.hidden=!noAccess;
  if(noAccess){for(const panel of panels)panel.classList.remove('active')}
-
 }
 
 function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=data?.username||'';mustChange=!!data?.mustChange;permissions=Array.isArray(data?.permissions)?data.permissions:[];
@@ -138,9 +132,9 @@ const selectedPerms=()=>Array.from(permBox.querySelectorAll('input:checked:not(:
 const fillPerms=p=>{for(const el of permBox.querySelectorAll('input'))el.checked=p.includes(el.value)};
 const selectedAccount=()=>cachedAccounts.find(a=>a.username===manageSelect.value);
 function showSelectedAccount(){
- const a=selectedAccount();managePanel.querySelector('#lotteryManageInfo').textContent=a?(a.role+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')):'請選擇現有人員';
- managePanel.querySelector('#lotteryManageName').value=a?.fullName||'';fillPerms(a?.permissions||[]);
- for(const el of permBox.querySelectorAll('input')){const allowed=!a||a.role==='Admin'||USER_PERMS.includes(el.value);el.closest('label').hidden=!allowed;el.disabled=!allowed;if(!allowed)el.checked=false}
+ const a=selectedAccount();managePanel.querySelector('#lotteryManageInfo').textContent=a?(a.username==='Yuan'?'最高管理員｜全部權限（固定保護）':a.role+' · '+(a.disabled?'已停用':a.mustChange?'待修改初始密碼':'已啟用')):'請選擇現有人員';
+ managePanel.querySelector('#lotteryManageName').value=a?.fullName||'';fillPerms(a?.username==='Yuan'?ALL_PERMS.map(([id])=>id):(a?.permissions||[]));
+ for(const el of permBox.querySelectorAll('input')){const allowed=!a||a.role==='Admin'||USER_PERMS.includes(el.value);el.closest('label').hidden=!allowed;el.disabled=!allowed||a?.username==='Yuan';if(!allowed)el.checked=false}
  const locked=!a||a.username==='Yuan';
  manageForm.querySelector('button[type=submit]').disabled=locked||!can('accounts_manage');
  permissionForm.querySelector('button[type=submit]').disabled=locked||!can('permissions_manage');
