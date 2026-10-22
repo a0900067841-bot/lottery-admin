@@ -23,7 +23,7 @@ const validTemp=p=>typeof p==='string'&&/^\d{4}$/.test(p);
 const validPermanent=p=>typeof p==='string'&&p.length>=8&&p.length<=12;
 
 const PERMS=['dashboard','prizes_view','prizes_edit','ticket_view','ticket_edit','device_sync','sound_settings','device_config_view','redeem','redeem_history','accounts_view','accounts_manage','permissions_manage'];
-const defaults=role=>role==='Admin'?[...PERMS]:['redeem'];
+const defaults=role=>role==='Admin'?['dashboard','prizes_view','prizes_edit','ticket_view','ticket_edit','device_sync','redeem','redeem_history','accounts_view','accounts_manage','permissions_manage']:['redeem'];
 const permitted=(u,p)=>!!u&&(u.username==='Yuan'||(!u.mustChange&&u.permissions?.includes(p)));
 const normalized=a=>Array.isArray(a.permissions)?PERMS.filter(p=>a.permissions.includes(p)):defaults(a.role);
 const validPerms=p=>Array.isArray(p)&&p.length<=PERMS.length&&p.every(x=>PERMS.includes(x))&&new Set(p).size===p.length;
