@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.23 - separate account management, prize view-only controls and versioned loading.
+// v0.1.24 - independent sound and device config permissions.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -43,7 +43,7 @@ const nav=document.querySelector('nav');if(nav)nav.before(bar);else document.bod
 const username=gate.querySelector('#lotteryUsername'),pw=gate.querySelector('#lotteryPassword'),remember=gate.querySelector('#lotteryRemember'),msg=gate.querySelector('#lotteryLoginMessage'),loginBtn=gate.querySelector('#lotteryLoginButton');
 let token='',role='',currentName='',mustChange=false,permissions=[];
 window.lotteryCan=p=>!!token&&!mustChange&&can(p);
-const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['prizes_edit','修改獎項'],['ticket_view','查看獎券模板'],['ticket_edit','修改獎券模板'],['device_sync','設備雲端同步'],['redeem','獎券核銷'],['redeem_history','查詢核銷紀錄（預留）'],['accounts_view','查看人員'],['accounts_manage','建立／停用／刪除人員'],['permissions_manage','修改人員權限']];
+const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['prizes_edit','修改獎項'],['ticket_view','查看獎券模板'],['ticket_edit','修改獎券模板'],['device_sync','設備雲端同步'],['sound_settings','蜂鳴器設定'],['device_config_view','完整設備設定檔'],['redeem','獎券核銷'],['redeem_history','查詢核銷紀錄（預留）'],['accounts_view','查看人員'],['accounts_manage','建立／停用／刪除人員'],['permissions_manage','修改人員權限']];
 const can=p=>currentName==='Yuan'||permissions.includes(p);
 const panels=Array.from(document.querySelectorAll('.panel')),tabs=Array.from(document.querySelectorAll('nav button'));
 function bindEyes(root){for(const row of root.querySelectorAll('.lottery-passrow')){const input=row.querySelector('input'),btn=row.querySelector('button');btn.addEventListener('click',()=>{input.type=input.type==='password'?'text':'password';btn.setAttribute('aria-label',input.type==='password'?'顯示密碼':'隱藏密碼');btn.textContent=input.type==='password'?'👁️':'🙈'})}}
@@ -62,6 +62,7 @@ function showRole(){
  createPanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
  managePanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_view'));
  if(token&&!mustChange)showSelectedAccount();
+ for(const [id,perm] of [['lotterySoundCard','sound_settings'],['lotteryDeviceConfigCard','device_config_view']]){const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm))}
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
  for(const id of ['prizeForm','clearEdit']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('prizes_edit'))}
  for(const id of ['ticketForm']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('ticket_edit'))}
