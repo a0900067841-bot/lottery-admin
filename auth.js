@@ -1,5 +1,5 @@
 'use strict';
-// v0.1.25 - independent sound and device config permissions.
+// v0.1.26 - empty permission state and role-specific permission display.
 (()=>{
 const BASE='https://yijia-lottery-api.a0900067841.workers.dev';
 const key=document.getElementById('cloudAdminKey');
@@ -8,7 +8,7 @@ const legacy=key.closest('label');if(legacy)legacy.replaceWith(key);
 key.type='hidden';key.hidden=true;key.setAttribute('aria-hidden','true');
 try{localStorage.removeItem('lottery_admin_session_v0111');sessionStorage.removeItem('lottery_cloud_admin_key_session_v0110')}catch(_){}
 const css=document.createElement('style');css.textContent=`
-#lotteryAuthGate[hidden],#lotteryAuthBar[hidden],.lottery-role-hidden{display:none!important}
+#lotteryAuthGate[hidden],#lotteryAuthBar[hidden],.lottery-role-hidden,#lotteryManagePerms label[hidden]{display:none!important}
 #lotteryAuthGate{position:fixed;inset:0;z-index:9999;background:#f4f7fb;display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto}
 #lotteryAuthGate form{width:min(100%,390px);background:white;border-radius:18px;padding:25px;box-shadow:0 10px 40px #0002;color:#17223b}
 #lotteryAuthGate label{display:block;margin:15px 0 6px}#lotteryAuthGate input,#lotteryAuthGate select{width:100%;padding:12px;font-size:16px;box-sizing:border-box}
@@ -47,6 +47,7 @@ const ALL_PERMS=[['dashboard','管理總覽'],['prizes_view','查看獎項'],['p
 const USER_PERMS=['prizes_view', 'ticket_view', 'redeem', 'redeem_history'];
 const can=p=>currentName==='Yuan'||((role==='Admin'||USER_PERMS.includes(p))&&permissions.includes(p));
 const panels=Array.from(document.querySelectorAll('.panel')),tabs=Array.from(document.querySelectorAll('nav button'));
+const emptyNotice=document.createElement('section');emptyNotice.id='lotteryNoPermissionNotice';emptyNotice.className='card';emptyNotice.hidden=true;emptyNotice.setAttribute('role','status');emptyNotice.innerHTML='<h2>目前沒有可使用的功能</h2><p>目前帳號尚未開放任何功能，請聯絡管理員設定權限。</p>';document.querySelector('main')?.append(emptyNotice);
 function bindEyes(root){for(const row of root.querySelectorAll('.lottery-passrow')){const input=row.querySelector('input'),btn=row.querySelector('button');btn.addEventListener('click',()=>{input.type=input.type==='password'?'text':'password';btn.setAttribute('aria-label',input.type==='password'?'顯示密碼':'隱藏密碼');btn.textContent=input.type==='password'?'👁️':'🙈'})}}
 bindEyes(gate);
 // Stop prize editing from delegated clicks even if an old button remains in the DOM.
@@ -73,6 +74,11 @@ function showRole(){
  document.documentElement.classList.toggle('lottery-prizes-readonly',!token||mustChange||!can('prizes_edit'));
  const visible=tabs.filter(x=>!x.classList.contains('lottery-role-hidden'));
  if(visible.length&&!visible.some(x=>x.classList.contains('active')))visible[0].click();
+ // If all navigation destinations are denied, show an explanation rather than a blank page.
+ const noAccess=!!token&&!mustChange&&visible.length===0;
+ emptyNotice.hidden=!noAccess;
+ if(noAccess){for(const panel of panels)panel.classList.remove('active')}
+
 }
 
 function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=data?.username||'';mustChange=!!data?.mustChange;permissions=Array.isArray(data?.permissions)?data.permissions:[];
