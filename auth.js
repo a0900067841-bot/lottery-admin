@@ -58,7 +58,7 @@ document.addEventListener('click',e=>{
 },true);
 
 function showRole(){
- const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',createAccount:'accounts_manage',manageAccount:'accounts_view'};
+ const mapping={dashboard:'dashboard',prizes:'prizes_view',ticket:'ticket_view',redeem:'redeem',redeemHistory:'redeem_history',createAccount:'accounts_manage',manageAccount:'accounts_view'};
  const ticketAccess=['ticket_view','ticket_edit','device_sync','sound_settings','print_prep','device_config_view'].some(can);
  for(const tab of tabs)tab.classList.toggle('lottery-role-hidden',!token||mustChange||!(tab.dataset.tab==='ticket'?ticketAccess:can(mapping[tab.dataset.tab])));
  for(const panel of panels)panel.classList.toggle('lottery-role-hidden',!token||mustChange||!(panel.id==='ticket'?ticketAccess:can(mapping[panel.id])));
@@ -72,6 +72,9 @@ function showRole(){
  for(const id of ['ticketForm']){const el=document.getElementById(id);if(el)el.classList.toggle('lottery-role-hidden',!can('ticket_edit'))}
  // Prize list is rendered by app.js, so hide its action buttons for read-only accounts.
  document.documentElement.classList.toggle('lottery-prizes-readonly',!token||mustChange||!can('prizes_edit'));
+ const prizeDescription=document.getElementById('prizePageDescription');
+ if(prizeDescription)prizeDescription.textContent=can('prizes_edit')?'可新增、修改、刪除測試獎項。權重與數量供抽獎邏輯規劃；此版本不會真正扣除庫存。':'可查看目前測試獎項及數量；此帳號沒有新增、修改或刪除獎項的權限。';
+
  const visible=tabs.filter(x=>!x.classList.contains('lottery-role-hidden'));
  if(visible.length&&!visible.some(x=>x.classList.contains('active')))visible[0].click();
  // If all navigation destinations are denied, show an explanation rather than a blank page.
