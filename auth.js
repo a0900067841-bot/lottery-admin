@@ -82,6 +82,7 @@ function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=dat
  key.value=token&&!mustChange&&can('device_sync')?token:'';key.hidden=true;
  gate.hidden=!!token&&!mustChange;bar.hidden=!token||mustChange;who.textContent=currentName;
  loginForm.hidden=mustChange;changeForm.hidden=!mustChange;showRole();
+ window.lotteryRentalPreview?.showForVerifiedYuan(!!token&&!mustChange&&role==='Admin'&&currentName==='Yuan');
 }
 async function api(path,method='GET',body,override){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
