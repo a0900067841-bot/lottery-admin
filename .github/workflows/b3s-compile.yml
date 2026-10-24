@@ -1,0 +1,39 @@
+
+name: B3S ESP32 Compile Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - b3s-ble-test
+    paths:
+      - B3S_BLE_Diagnostic_v3.ino
+      - .github/workflows/b3s-compile.yml
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download source
+        uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 platform
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install NimBLE library
+        run: arduino-cli lib install "NimBLE-Arduino@2.3.7"
+
+      - name: Prepare sketch
+        run: |
+          mkdir -p /tmp/B3S_BLE_Diagnostic_v3
+          cp B3S_BLE_Diagnostic_v3.ino /tmp/B3S_BLE_Diagnostic_v3/B3S_BLE_Diagnostic_v3.ino
+
+      - name: Compile ESP32
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 /tmp/B3S_BLE_Diagnostic_v3
