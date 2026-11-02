@@ -13,16 +13,46 @@ async function verifyPhysicalDelivery(request,env,{actor=null,cors={}}={}) {
   if(!actor||actor.role!=='Admin'||actor.mustChange||typeof actor.username!=='string')return send({ok:false,error:'Admin session required'},403,cors);
   if(!env.DB)return send({ok:false,error:'D1 unavailable'},503,cors);
   let b;try{b=await request.json();}catch{return send({ok:false,error:'Invalid JSON'},400,cors);}
-  if(!b||typeof b.ticketId!=='string'||b.ticketId.length>128||!b.ticketId||b.confirmedPhysicalPaper!==true||b.confirmedHandedToHolder!==true)
-    return send({ok:false,error:'Explicit physical paper confirmation required'},400,cors);
+  // A ticket UUID alone is not evidence of the printed original. The Admin
+  // must scan its complete QR token. D1 stores only SHA-256(token), never token.
+  const match=typeof b?.qrValue==='string'
+    ? /^YIQI1\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-f]{64})$/.exec(b.qrValue)
+    : null;
+  if(!match||b.confirmedPhysicalPaper!==true||b.confirmedHandedToHolder!==true)
+    return send({ok:false,error:'完整實體獎券 QR 與交付確認為必要條件'},400,cors);
+  const ticketId=match[1], token=match[2];
+  if(b.ticketId!==undefined&&b.ticketId!==ticketId)
+    return send({ok:false,error:'QR 與票號不一致'},400,cors);
+  try {
+    const verifiedTicket=await env.DB.prepare(
+      'SELECT id,token_sha256 FROM lottery_tickets WHERE id=?'
+    ).bind(ticketId).first();
+    if(!verifiedTicket || typeof verifiedTicket.token_sha256!=='string')
+      return send({ok:false,error:'獎券 QR 驗證失敗'},403,cors);
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest(
+      'SHA-256',new TextEncoder().encode(token)
+    )),byte=>byte.toString(16).padStart(2,'0')).join('');
+    if(digest!==verifiedTicket.token_sha256)
+      return send({ok:false,error:'獎券 QR 驗證失敗'},403,cors);
+  }catch{return send({ok:false,error:'QR 驗證服務目前不可用'},503,cors);}
   const now=new Date().toISOString();
   try {
     const r=await env.DB.prepare(`UPDATE lottery_print_handoffs
        SET state='verified_delivered',operator_verified_at=?,operator_verified_by=?,updated_at=?
        WHERE ticket_id=? AND state IN ('uncertain','reported_printed')
          AND EXISTS (SELECT 1 FROM lottery_tickets t WHERE t.id=lottery_print_handoffs.ticket_id AND t.status='issued' AND t.voided_at IS NULL)
-       RETURNING ticket_id,state,operator_verified_at`).bind(now,actor.username,now,b.ticketId).first();
-    if(!r)return send({ok:false,error:'Ticket not eligible for delivery verification'},409,cors);
+       RETURNING ticket_id,state,operator_verified_at`).bind(now,actor.username,now,ticketId).first();
+    if(!r) {
+      // A network timeout after a successful first confirmation must not
+      // encourage another print. Return a read-only confirmed status only.
+      const prior=await env.DB.prepare(`SELECT h.ticket_id,h.state,h.operator_verified_at
+         FROM lottery_print_handoffs h JOIN lottery_tickets t ON t.id=h.ticket_id
+         WHERE h.ticket_id=? AND h.state='verified_delivered'
+           AND t.status='issued' AND t.voided_at IS NULL`).bind(ticketId).first();
+      if(prior?.operator_verified_at)
+        return send({ok:true,ticketId,state:'verified_delivered',alreadyVerified:true,printAllowed:false},200,cors);
+      return send({ok:false,error:'Ticket not eligible for delivery verification'},409,cors);
+    }
     // A database trigger inserts immutable audit evidence atomically with UPDATE.
     return send({ok:true,ticketId:r.ticket_id,state:r.state,operatorVerifiedAt:r.operator_verified_at,printAllowed:false},200,cors);
   }catch{return send({ok:false,error:'Delivery verification unavailable; remain locked'},503);}
@@ -474,7 +504,7 @@ async function handleTicketRequest(request,env,{actor=null,deviceAuthorized=fals
  }catch(e){return err(/UNIQUE constraint failed/i.test(e?.message||'')?'Request already processed': 'Request failed',/UNIQUE constraint failed/i.test(e?.message||'')?409:500,cors);}
 }
 
-return {sha256, ticketSecret, handleTicketRequest};
+return {sha256, ticketSecret, handleTicketRequest, freezeTicketTerms};
 })();
 
 // ==== SOURCE: trusted-draw.mjs ====
@@ -732,7 +762,7 @@ const { handleDeviceBridge } = __mods["device-bridge.mjs"];
 const { selectTrustedPrize } = __mods["trusted-draw.mjs"];
 const { assertPrizeIdentitySafe } = __mods["prize-identity-guard.mjs"];
 const { handlePrizeSyncApply } = __mods["prize-sync-apply.mjs"];
-const { handleTicketRequest } = __mods["ticket-api.mjs"];
+const { handleTicketRequest, freezeTicketTerms } = __mods["ticket-api.mjs"];
 const { ticketAccess } = __mods["ticket-access.mjs"];
 // yijia-lottery-api — account management v0.1.25; existing device config API retained.
 const configKey='device:config',ackKey='device:ack',SESSION_SECONDS=7*86400;
@@ -880,6 +910,55 @@ export default {async fetch(request,env){
    if(path==='/device/lottery/issue'||path==='/device/lottery/handoff'||path==='/device/lottery/handoff/start'||path==='/device/lottery/handoff/status'){
      return await handleDeviceBridge(request,env,{deviceAuthorized:device,selectPrize:selectTrustedPrize});
    }
+  // Status check for logged-in User/Admin before accepting an original paper voucher.
+  // Do not tie redemption availability to current issue mode: issued production
+  // tickets remain eligible even if new issuance is temporarily disabled.
+  if(path==='/tickets/readiness'&&request.method==='GET'){
+   const actor=await identity(request,env);
+   if(!permitted(actor,'redeem'))return json({ok:false,error:'Redeem permission required'},403,cors);
+   if(!env.DB?.prepare)return json({ok:true,redemptionAvailable:false,reason:'D1 unavailable'},200,cors);
+   try{
+    await env.DB.prepare('SELECT id,is_test,status FROM lottery_tickets LIMIT 1').all();
+    return json({ok:true,redemptionAvailable:true},200,cors);
+   }catch{return json({ok:true,redemptionAvailable:false,reason:'Ticket ledger unavailable'},200,cors);}
+  }
+   // Admin-only, read-only operational preflight. No secret values or passwords
+   // returned; no ticket, stock, KV or printer write takes place.
+   if(path==='/admin/lottery/readiness'&&request.method==='GET'){
+     const actor=await identity(request,env);
+     if(!permitted(actor,'device_sync'))return json({ok:false,error:'Admin configuration permission required'},403,cors);
+     const config=await env.CONFIG_KV.get(configKey,'json');
+     const checks={
+       cloudConfigSaved:!!config?.revision,
+       deviceMatched:env.LOTTERY_DEVICE_ID==='esp32-48375cd33fb0',
+       qrSigningKeySet:/^[0-9a-f]{64}$/i.test(env.LOTTERY_QR_HMAC_KEY||''),
+       modeIsProduction:env.LOTTERY_ISSUE_MODE==='production',
+       modeIsTest:env.LOTTERY_ISSUE_MODE==='test',
+       prizeSyncApplyEnabled:env.ENABLE_PRIZE_SYNC_APPLY==='true',
+       frozenTermsValid:false, d1RevisionMatched:false, inventoryAvailable:false,
+       d1Available:false
+     };
+     try{freezeTicketTerms(config?.config);checks.frozenTermsValid=true;}catch{}
+     if(env.DB?.prepare){
+       try{
+         const [rev, stock]=await Promise.all([
+           env.DB.prepare('SELECT revision FROM lottery_prize_sync_state WHERE singleton=1').first(),
+           env.DB.prepare('SELECT id,quantity,issued,enabled FROM lottery_prizes LIMIT 101').all()
+         ]);
+         checks.d1Available=stock?.success!==false&&Array.isArray(stock?.results)&&stock.results.length<=100;
+         checks.d1RevisionMatched=!!config?.revision&&rev?.revision===config.revision;
+         checks.inventoryAvailable=checks.d1Available&&stock.results.some(x=>x.enabled===1&&x.quantity>x.issued);
+       }catch{}
+     }
+     // Mode and secrets do not authorize printing on their own. Printer and
+     // delivery guards are verified separately on the real ESP32/B3S.
+     const productionPreflight=checks.cloudConfigSaved&&checks.deviceMatched&&
+       checks.qrSigningKeySet&&checks.modeIsProduction&&checks.frozenTermsValid&&
+       checks.d1RevisionMatched&&checks.inventoryAvailable&&checks.d1Available;
+     return json({ok:true,readOnly:true,deviceId:'esp32-48375cd33fb0',
+       checks,productionPreflight,hardwareValidated:false,
+       note:'Cloud-only checks; hardware, real paper and QR redemption must be verified separately.'},200,cors);
+   }
    // YIQI_TICKET_DISPATCH_V1: protect ticket endpoints with existing authenticated session.
    if(path.startsWith('/tickets/')){
      const actor=await identity(request,env);
@@ -995,6 +1074,12 @@ export default {async fetch(request,env){
    await env.CONFIG_KV.put(configKey,JSON.stringify({revision,config}));
    const ack=await env.CONFIG_KV.get(ackKey,'json');
    return json({ok:true,revision,deviceAckRevision:ack?.revision||null,prizeIds:config.prizes.map(p=>p.id||null)},200,cors);
+  }
+  // Operator cloud configuration: authenticated, read-only, no secret values.
+  // Workstation/iPhone may have separate localStorage; never silently overwrite a draft.
+  if(path==='/admin/config'&&request.method==='GET'){
+   const saved=await env.CONFIG_KV.get(configKey,'json');
+   return json({ok:true,exists:!!saved,revision:saved?.revision||null,config:saved?.config||null},200,cors);
   }
   if(path==='/admin/status'&&request.method==='GET'){
    const saved=await env.CONFIG_KV.get(configKey,'json'),ack=await env.CONFIG_KV.get(ackKey,'json');
