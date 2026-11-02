@@ -1,0 +1,23 @@
+# 從既有 GitHub lottery-admin root wrangler.toml 沿用的綁定；不是新 Worker。
+# 修改此檔之前，先確認 Cloudflare 既有綁定。
+name = "yijia-lottery-api"
+main = "worker.js"
+compatibility_date = "2026-10-21"
+
+# 保留使用 Cloudflare Dashboard 管理的既有一般變數；秘密值不寫入 Git。
+keep_vars = true
+
+[[kv_namespaces]]
+binding = "CONFIG_KV"
+id = "201a9a3338384133935a23db1edafd5e"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "yijia-lottery-db"
+database_id = "a7b7e642-516c-498e-a3ee-bd8cad393bd0"
+
+[vars]
+ADMIN_ORIGINS = "https://a0900067841-bot.github.io"
+
+# 不在此設定 LOTTERY_ISSUE_MODE 或 ENABLE_PRIZE_SYNC_APPLY，預設維持關閉。
+# LOTTERY_QR_HMAC_KEY 只能在 Cloudflare Secrets 中設定，絕不可提交到 Git。
