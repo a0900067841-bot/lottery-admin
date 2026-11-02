@@ -1,0 +1,86 @@
+name: YIQI Lottery Worker - Manual Safe Release
+
+# 不監聽 push，避免上傳 GitHub 就覆蓋正式 Worker。
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "upload_only 僅建立零流量版本；deploy_live 才會切換正式版"
+        required: true
+        type: choice
+        options:
+          - upload_only
+          - deploy_live
+        default: upload_only
+      confirmation:
+        description: "僅 deploy_live 輸入 DEPLOY_YIQI_LIVE（正式站尚未驗收，勿選）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yiqi-lottery-worker-release
+  cancel-in-progress: false
+
+jobs:
+  worker-release:
+    runs-on: ubuntu-latest
+    env:
+      YIQI_OPERATION: ${{ inputs.operation }}
+      YIQI_CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Require explicit confirmation to deploy live
+        shell: bash
+        run: |
+          if [ "$YIQI_OPERATION" = "deploy_live" ] && [ "$YIQI_CONFIRMATION" != "DEPLOY_YIQI_LIVE" ]; then
+            echo '::error::正式部署必須填入 DEPLOY_YIQI_LIVE；請先使用 upload_only。'
+            exit 1
+          fi
+
+      - name: Checkout exact GitHub commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate JavaScript syntax
+        working-directory: lottery-worker-git
+        run: node --check worker.js
+
+      - name: Check deployment target and existing D1/KV bindings
+        working-directory: lottery-worker-git
+        shell: bash
+        run: |
+          python3 - <<'PY2'
+          import pathlib, tomllib
+          cfg=tomllib.loads(pathlib.Path('wrangler.toml').read_text(encoding='utf8'))
+          assert cfg['name']=='yijia-lottery-api', 'Wrong Worker target!'
+          assert cfg['main']=='worker.js', 'Wrong entrypoint!'
+          assert cfg.get('keep_vars') is True, 'Existing Dashboard variables must be preserved!'
+          assert cfg['kv_namespaces']==[{'binding':'CONFIG_KV','id':'201a9a3338384133935a23db1edafd5e'}]
+          assert cfg['d1_databases']==[{'binding':'DB','database_name':'yijia-lottery-db','database_id':'a7b7e642-516c-498e-a3ee-bd8cad393bd0'}]
+          assert 'LOTTERY_ISSUE_MODE' not in cfg.get('vars',{}), 'Do not enable issue mode via Git!'
+          print('OK: existing Worker, D1, KV and safe default variables')
+          PY2
+
+      - name: Upload new version WITHOUT routing traffic
+        if: ${{ inputs.operation == 'upload_only' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: lottery-worker-git
+          command: versions upload
+
+      - name: Deploy live ONLY after full manual approval
+        if: ${{ inputs.operation == 'deploy_live' && inputs.confirmation == 'DEPLOY_YIQI_LIVE' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: lottery-worker-git
+          command: deploy
