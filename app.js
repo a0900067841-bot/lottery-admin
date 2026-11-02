@@ -1,17 +1,19 @@
 'use strict';
 // v0.1.16: hide obsolete sync-key UI; retain authenticated cloud publishing. Browser storage is NEVER a real prize ledger.
 const KEY='lottery_ui_v010'; // reuse v0.1.4 data
-const defaults={prizes:[{name:'購物金 10 元',type:'購物金',weight:5,quantity:10,issued:0},{name:'指定商品一份',type:'商品',weight:3,quantity:10,issued:0}],ticket:{store:'',days:7,usage:'限店使用',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
+const defaults={prizes:[],ticket:{store:'',days:7,usage:'',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
 let state;
 try{const v=JSON.parse(localStorage.getItem(KEY));state=v&&Array.isArray(v.prizes)&&v.ticket?v:structuredClone(defaults)}catch{state=structuredClone(defaults)}
 const STORE_MIGRATION_KEY='lottery_store_placeholder_migrated_v014';
 try{if(localStorage.getItem(STORE_MIGRATION_KEY)!=='1'){if(state.ticket?.store==='示範門市'){state.ticket.store='';localStorage.setItem(KEY,JSON.stringify(state))}localStorage.setItem(STORE_MIGRATION_KEY,'1')}}catch(e){console.warn('舊示範店名資料清理未完成',e)}
+const isPrizeId=id=>typeof id==='string'&&/^prize_[a-f0-9]{32}$/.test(id);
+function newPrizeId(){return 'prize_'+crypto.randomUUID().replace(/-/g,'')}
 function save(){localStorage.setItem(KEY,JSON.stringify(state))}
 function el(id){return document.getElementById(id)}
 function txt(tag,value,className){const n=document.createElement(tag);n.textContent=value;if(className)n.className=className;return n}
 function renderPrizes(){el('prizeCount').textContent=state.prizes.length;const root=el('prizeList');root.replaceChildren();state.prizes.forEach((p,i)=>{const card=txt('div','','card prize-row'),info=document.createElement('div');info.append(txt('strong',p.name),txt('p',`${p.type} · 權重 ${p.weight} · 總數 ${p.quantity??0} · 已抽出 ${p.issued??0} · 剩餘 ${Math.max(0,(p.quantity??0)-(p.issued??0))}`));const actions=document.createElement('div');const edit=txt('button','編輯'),del=txt('button','刪除');edit.onclick=()=>{el('editIndex').value=i;el('prizeName').value=p.name;el('prizeType').value=p.type;el('prizeWeight').value=p.weight;el('prizeQuantity').value=p.quantity??0;window.scrollTo({top:0,behavior:'smooth'})};del.onclick=()=>{if(confirm(`刪除「${p.name}」？`)){state.prizes.splice(i,1);save();renderPrizes()}};actions.append(edit,del);card.append(info,actions);root.append(card)})}
 function clearForm(){el('prizeForm').reset();el('editIndex').value=''}
-el('prizeForm').addEventListener('submit',e=>{e.preventDefault();const p={name:el('prizeName').value.trim(),type:el('prizeType').value,weight:Number(el('prizeWeight').value),quantity:Number(el('prizeQuantity').value)};if(!p.name||!Number.isInteger(p.weight)||p.weight<1||!Number.isSafeInteger(p.quantity)||p.quantity<0)return;const i=el('editIndex').value;if(i!==''){p.issued=state.prizes[Number(i)].issued??0;if(p.quantity<p.issued){alert('總數量不能小於已抽出數量');return}}else p.issued=0;if(i==='')state.prizes.push(p);else state.prizes[Number(i)]=p;save();clearForm();renderPrizes()});el('clearEdit').onclick=clearForm;
+el('prizeForm').addEventListener('submit',e=>{e.preventDefault();const p={name:el('prizeName').value.trim(),type:el('prizeType').value,weight:Number(el('prizeWeight').value),quantity:Number(el('prizeQuantity').value)};if(!p.name||!Number.isInteger(p.weight)||p.weight<1||!Number.isSafeInteger(p.quantity)||p.quantity<0)return;const i=el('editIndex').value;if(i!==''){const previous=state.prizes[Number(i)];if(previous.id!==undefined)p.id=previous.id;p.issued=previous.issued??0;if(p.quantity<p.issued){alert('總數量不能小於已抽出數量');return}}else{p.issued=0;/* Legacy prizes stay unmodified. New items have stable identity. */p.id=newPrizeId()}if(i==='')state.prizes.push(p);else state.prizes[Number(i)]=p;save();clearForm();renderPrizes()});el('clearEdit').onclick=clearForm;
 function loadTicket(){const t=state.ticket;el('storeName').value=t.store||'';el('validDays').value=t.days;el('usage').value=t.usage;el('rules').value=t.rules;el('warning').value=t.warning;el('paperWidth').value=[30,40,50,55,57,58].includes(Number(t.paperWidth))?t.paperWidth:55;el('barcodeType').value=t.barcodeType||'qr';el('barcodeSize').value=t.barcodeSize??90;el('rulesFontSize').value=t.rulesFontSize??12;el('warningFontSize').value=t.warningFontSize??12;el('showRules').checked=t.showRules!==false;el('showWarning').checked=t.showWarning!==false;renderTicket()}
 function ticketFormValues(){return {store:el('storeName').value.trim(),days:Number(el('validDays').value),usage:el('usage').value,rules:el('rules').value,warning:el('warning').value,paperWidth:Number(el('paperWidth').value),barcodeType:el('barcodeType').value,barcodeSize:Number(el('barcodeSize').value),rulesFontSize:Number(el('rulesFontSize').value),warningFontSize:Number(el('warningFontSize').value),showRules:el('showRules').checked,showWarning:el('showWarning').checked}}
 function ticketChanged(){
@@ -28,7 +30,32 @@ function renderSavedTicketSummary(){
 el('ticketForm').addEventListener('input',ticketChanged);el('ticketForm').addEventListener('change',ticketChanged);
 function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(60,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'))}
 el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket=ticketFormValues();try{save();renderTicket();el('ticketSaveStatus').textContent='已儲存列印模板（目前瀏覽器）；等待未來同步至 ESP32';el('ticketSaveStatus').dataset.saved='true';renderSavedTicketSummary()}catch(err){el('ticketSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('ticketSaveStatus').dataset.saved='false'}});
-el('checkCode').onclick=()=>{const code=el('redeemCode').value.trim();el('redeemResult').textContent=code?'展示版尚未連接伺服器，無法驗證或核銷此編號。':'請先輸入活動序號。'};
+// Actual redemption availability is enforced by the authenticated Worker.
+// A stale website cannot turn on issuance or bypass the server-side paper checks.
+el('checkCode').onclick=async()=>{
+  const output=el('redeemResult'),button=el('checkCode');
+  const qrValue=el('redeemCode').value.trim();
+  output.textContent='';
+
+  if(!/^YIQI1\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[0-9a-f]{64}$/.test(qrValue)){output.textContent='請掃描紙本正本獎券上的完整 QR Code。單獨輸入兌換編號不能核銷。';return}
+  if(!el('originalPaperConfirmed').checked){output.textContent='請先實際確認收到實體紙本正本獎券。';return}
+  button.disabled=true;output.textContent='正在確認雲端核銷服務…';
+  try{
+    const ready=await cloudRequest('GET','/tickets/readiness');
+    if(ready.ok!==true||ready.redemptionAvailable!==true)
+      throw Error('雲端核銷服務尚未就緒，未修改任何獎券');
+    if(!confirm('已確認收到實體紙本正本，確定核銷？此操作不可撤銷。')){
+      output.textContent='已取消核銷，獎券沒有修改。';return;
+    }
+    output.textContent='正在向伺服器核銷…';
+    const result=await cloudRequest('POST','/tickets/redeem',{qrValue,paperOriginalConfirmed:true});
+    if(result.ok&&result.status==='redeemed'){
+      output.textContent='核銷成功｜獎券 ID：'+result.ticketId;
+      el('redeemCode').value='';el('originalPaperConfirmed').checked=false;
+    }else output.textContent='伺服器未確認核銷；請先查詢交易狀態，不要直接重試。';
+  }catch(e){output.textContent='核銷結果未確認：'+e.message+'。請查詢交易狀態，避免重複操作。'}
+  finally{button.disabled=false}
+};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.tab))});
 const SOUND_KEY='lottery_sound_v015';let sound={enabled:true,volume:70,pattern:'short'};try{sound={...sound,...JSON.parse(localStorage.getItem(SOUND_KEY)||'{}')}}catch{}
 function loadSound(){el('soundEnabled').checked=!!sound.enabled;el('soundVolume').value=sound.volume;el('soundPattern').value=sound.pattern;el('soundVolumeValue').textContent=sound.volume+'%'}
@@ -51,7 +78,7 @@ function deviceStatus(message,success=false){const e=el('deviceConfigStatus');e.
 function fullDeviceConfig(){
   return {schema:DEVICE_SCHEMA,version:1,exportedAt:new Date().toISOString(),
     ticket:normalizeTicket(state.ticket),
-    prizes:state.prizes.map(p=>({name:p.name,type:p.type,weight:Number(p.weight),quantity:Number(p.quantity),issued:Number(p.issued??0)})),
+    prizes:state.prizes.map(p=>({...p.id?{id:p.id}:{},name:p.name,type:p.type,weight:Number(p.weight),quantity:Number(p.quantity),issued:Number(p.issued??0)})),
     sound:{enabled:!!sound.enabled,volume:Number(sound.volume),pattern:sound.pattern},
     note:'CONFIG_ONLY_NO_VOUCHERS_NO_REDEMPTION'};
 }
@@ -72,7 +99,9 @@ function validateDeviceConfig(x){
   if(!t||!validText(t.store,40)||!intRange(t.days,1,365)||!validText(t.usage,3000)||!validText(t.rules,6000)||!validText(t.warning,3000))throw Error('獎券文字或有效期限不正確');
   if(![30,40,50,55,57,58].includes(t.paperWidth)||!['qr','code128'].includes(t.barcodeType)||!intRange(t.barcodeSize,60,100)||!intRange(t.rulesFontSize,10,18)||!intRange(t.warningFontSize,10,18)||typeof t.showRules!=='boolean'||typeof t.showWarning!=='boolean')throw Error('紙寬、條碼或文字設定不正確');
   if(!Array.isArray(x.prizes)||x.prizes.length>100)throw Error('獎項數量格式不正確（最多 100 項）');
+  const ids=new Set();
   for(const p of x.prizes){
+    if(p.id!==undefined){if(!isPrizeId(p.id)||ids.has(p.id))throw Error('獎項 ID 格式錯誤或重複');ids.add(p.id)}
     if(!p||!validText(p.name,40)||!p.name.trim()||!['購物金','商品'].includes(p.type)||!intRange(p.weight,1,100000)||!intRange(p.quantity,0,1000000)||!intRange(p.issued,0,p.quantity))throw Error('獎項內容或庫存數值不正確');
   }
   const s=x.sound;
@@ -163,16 +192,100 @@ async function cloudRequest(method,path,body){
     return data;
   }finally{clearTimeout(timeout)}
 }
+// Preserve the server-assigned prize IDs after the exact legacy configuration is saved.
+// IDs are accepted only when returned by the authenticated Worker in request order.
+function preserveServerPrizeIds(submitted,returnedIds){
+  if(!Array.isArray(returnedIds)||returnedIds.length!==submitted.prizes.length||
+     !returnedIds.every(isPrizeId)||new Set(returnedIds).size!==returnedIds.length)
+    throw Error('雲端已處理設定，但固定獎項 ID 回傳不完整；請停止修改並先回查雲端');
+  const current=fullDeviceConfig().prizes;
+  if(JSON.stringify(current)!==JSON.stringify(submitted.prizes))
+    throw Error('儲存期間瀏覽器獎項已改動；雲端版本需重新核對，不能套用 ID');
+  for(let i=0;i<returnedIds.length;i++){
+    if(submitted.prizes[i].id!==undefined&&submitted.prizes[i].id!==returnedIds[i])
+      throw Error('雲端與瀏覽器的獎項 ID 不一致；禁止覆蓋');
+  }
+  const previous=state.prizes;
+  try{
+    state.prizes=previous.map((prize,i)=>({...prize,id:returnedIds[i]}));
+    save();
+    renderPrizes();
+  }catch(e){state.prizes=previous;throw Error('雲端已儲存，但瀏覽器無法保存固定 ID；請勿再次上傳或更改獎項，先匯出備份');}
+}
+
 cloudPushBtn.addEventListener('click',async()=>{
   cloudPushBtn.disabled=true;
   cloudStatus('正在驗證設定並送往雲端…');
   try{
     const payload=fullDeviceConfig();
     validateDeviceConfig(payload);
+    if(!payload.prizes.length||!payload.ticket.usage?.trim())throw Error('正式同步前，請先設定獎項與完整使用方式。');
+    // Legacy prize identities must be reconciled against the actual saved cloud/D1
+    // records. Never infer IDs from names, list positions or newly generated IDs.
+    const idCount=payload.prizes.filter(p=>isPrizeId(p.id)).length;
+    if(idCount>0&&idCount<payload.prizes.length)throw Error('目前獎項同時包含舊版無 ID 與新版固定 ID，禁止同步；請先完成人工對照。瀏覽器中的獎項不會被刪除。');
+    const server=await cloudRequest('GET','/admin/lottery/readiness');
+    if(server.ok!==true||server.readOnly!==true||server.deviceId!=='esp32-48375cd33fb0')throw Error('新版 Worker 尚未啟用，不可修改雲端設定');
     const result=await cloudRequest('POST','/admin/config',payload);
-    cloudStatus('雲端已儲存設定版本 '+result.revision+'；'+(result.deviceAckRevision===result.revision?'設備已回報套用':'等待 ESP32 回報套用')+'。',true);
+    // Do not send another /admin/config after a successful save just to discover IDs.
+    preserveServerPrizeIds(payload,result.prizeIds);
+    resetD1Apply(); // KV revision changed; every prior D1 preview is stale.
+    cloudStatus('KV 設定已儲存，固定獎項 ID 已保存在本機（版本 '+result.revision+'）。D1 庫存尚未因此同步。'+(result.deviceAckRevision===result.revision?'設備已回報設定。':'ESP32 尚未回報設定。'),true);
   }catch(err){cloudStatus('同步未完成：'+err.message)}
   finally{cloudPushBtn.disabled=false}
+});
+// Manually load the authenticated KV configuration on another phone/computer.
+// Never infer prize IDs or overwrite a local draft without the operator's consent.
+const cloudLoadBtn=el('cloudLoad');
+if(cloudLoadBtn)cloudLoadBtn.addEventListener('click',async()=>{
+  cloudLoadBtn.disabled=true;
+  cloudStatus('正在從雲端讀取已保存的設定（唯讀）…');
+  try{
+    const found=await cloudRequest('GET','/admin/config');
+    if(found.ok!==true||found.exists!==true||!found.config)
+      throw Error('目前雲端沒有已儲存的設備設定');
+    validateDeviceConfig(found.config);
+    if(!Array.isArray(found.config.prizes)||!found.config.prizes.every(p=>isPrizeId(p.id)))
+      throw Error('雲端獎項尚未完成固定 ID 對照，禁止取代本機草稿');
+    const msg=`從雲端讀回 ${found.config.prizes.length} 項獎項及獎券設定（版本 ${found.revision}）？\n這會取代目前瀏覽器尚未同步的草稿，但不會修改 D1 或雲端資料。建議先按「下載完整設備設定 JSON」備份。`;
+    if(!window.confirm(msg)){cloudStatus('已取消讀取套用；本機設定保持不變。');return;}
+    const oldState=state,oldSound=sound;
+    const oldStateJSON=localStorage.getItem(KEY),oldSoundJSON=localStorage.getItem(SOUND_KEY);
+    try{
+      state={prizes:found.config.prizes.map(p=>({...p})),ticket:{...found.config.ticket}};
+      sound={...found.config.sound};
+      save();localStorage.setItem(SOUND_KEY,JSON.stringify(sound));
+      renderPrizes();loadTicket();loadSound();renderSavedTicketSummary();resetD1Apply();
+    }catch(e){
+      state=oldState;sound=oldSound;
+      try{
+        if(oldStateJSON===null)localStorage.removeItem(KEY);else localStorage.setItem(KEY,oldStateJSON);
+        if(oldSoundJSON===null)localStorage.removeItem(SOUND_KEY);else localStorage.setItem(SOUND_KEY,oldSoundJSON);
+      }catch{}
+      throw e;
+    }
+    cloudStatus(`已載入雲端版本 ${found.revision} 到這個瀏覽器（唯讀取得）。D1 庫存不會因此改變。`,true);
+  }catch(e){cloudStatus('雲端讀取失敗：'+e.message);}
+  finally{cloudLoadBtn.disabled=false;}
+});
+// Actual cloud preflight: useful on iPhone and PC without exposing any secret.
+const readinessBtn=el('lotteryReadiness'),readinessResult=el('lotteryReadinessResult');
+if(readinessBtn)readinessBtn.addEventListener('click',async()=>{
+  readinessBtn.disabled=true;
+  readinessResult.textContent='正在唯讀檢查後端、D1 和正式發券設定…';
+  try{
+    const r=await cloudRequest('GET','/admin/lottery/readiness');
+    if(r.ok!==true||r.readOnly!==true||!r.checks)throw Error('無法取得完整檢查結果');
+    const label={cloudConfigSaved:'已儲存雲端設定',deviceMatched:'ESP32 設備 ID',
+      qrSigningKeySet:'QR 簽章密鑰',modeIsProduction:'正式發券模式',
+      frozenTermsValid:'獎券條款完整',d1RevisionMatched:'D1 庫存同步版本',
+      inventoryAvailable:'仍有可抽獎庫存',d1Available:'D1 資料表可讀取'};
+    const lines=Object.entries(label).map(([k,v])=>`${r.checks[k]?'✓':'✕'} ${v}`);
+    readinessResult.textContent=(r.productionPreflight?'雲端正式發券條件已符合；仍須實機驗收。':'尚未符合正式發券條件。')+'\n'+lines.join('\n')+'\n此檢查不會修改獎券或資料庫。';
+    readinessResult.style.whiteSpace='pre-line';
+    readinessResult.dataset.saved=r.productionPreflight?'true':'false';
+  }catch(e){readinessResult.textContent='檢查未完成：'+e.message;readinessResult.dataset.saved='false';}
+  finally{readinessBtn.disabled=false;}
 });
 cloudStatusBtn.addEventListener('click',async()=>{
   cloudStatusBtn.disabled=true;
@@ -181,4 +294,154 @@ cloudStatusBtn.addEventListener('click',async()=>{
     cloudStatus(result.revision===null?'雲端尚無設定':('雲端版本 '+result.revision+'；設備已回報版本 '+(result.deviceAckRevision??'無')+(result.deviceAckRevision===result.revision?'（已同步）':'（尚未同步）')),true);
   }catch(err){cloudStatus('查詢失敗：'+err.message)}
   finally{cloudStatusBtn.disabled=false}
+});
+
+
+// Re-preview whenever a cloud save occurs; D1 writing is NEVER automatic.
+let d1PreviewRevision=null;
+function resetD1Apply(){
+  d1PreviewRevision=null;
+  const b=el('d1Apply'); if(b)b.disabled=true;
+  const c=el('d1ApplyCheck'); if(c)c.checked=false;
+  const x=el('d1ApplyConfirm'); if(x)x.value='';
+}
+function updateD1ApplyState(){
+  const b=el('d1Apply');
+  if(b)b.disabled=!(d1PreviewRevision&&el('d1ApplyCheck').checked&&el('d1ApplyConfirm').value.trim()==='SYNC_PRIZES');
+}
+const d1ApplyButton=el('d1Apply'),d1ApplyResult=el('d1ApplyResult');
+el('d1ApplyCheck').addEventListener('change',updateD1ApplyState);
+el('d1ApplyConfirm').addEventListener('input',updateD1ApplyState);
+if(d1ApplyButton)d1ApplyButton.addEventListener('click',async()=>{
+  if(!d1PreviewRevision||!el('d1ApplyCheck').checked||el('d1ApplyConfirm').value.trim()!=='SYNC_PRIZES')return;
+  const originalRevision=d1PreviewRevision;
+  resetD1Apply();
+  d1ApplyResult.textContent='正在重新唯讀確認雲端版本與 D1 差異…';
+  try{
+    // Re-preview immediately before a guarded write and fail closed on any missing prizes.
+    const again=await cloudRequest('GET','/admin/prizes/sync-preview');
+    if(again.ok!==true||again.readOnly!==true||again.revision!==originalRevision||
+       again.plan?.safeToPropose!==true||!Array.isArray(again.plan.disabled)||again.plan.disabled.length!==0)
+      throw Error('D1 或 KV 狀態已變，請重新預覽；沒有執行同步');
+    const acknowledged=window.confirm(`將 ${again.plan.localCount} 項獎項寫入正式 D1（雲端設定版本 ${originalRevision}）？此步驟會修改實際庫存；若不是你已核對的最終數量，請取消。`);
+    if(!acknowledged){d1ApplyResult.textContent='已取消，D1 沒有修改。';return;}
+    const r=await cloudRequest('POST','/admin/prizes/sync',{expectedRevision:originalRevision,confirm:'SYNC_PRIZES'});
+    if(r.ok!==true||r.verified!==true||r.revision!==originalRevision)
+      throw Error('伺服器未確認 D1 同步；請先唯讀查詢，不要重送');
+    d1ApplyResult.textContent=`D1 同步完成並由伺服器回查驗證：${r.count} 項，版本 ${r.revision}。仍須查詢實際庫存，尚未開放正式出票。`;
+  }catch(e){d1ApplyResult.textContent='D1 同步未確認：'+e.message+'。若曾嘗試寫入，請先唯讀回查，勿直接重送。';}
+  finally{d1ApplyButton.disabled=true;}
+});
+
+// Phase 2: read-only D1 sync preflight; no writes, migration, or issuance.
+const d1PreviewButton=el('d1Preview');
+const d1PreviewResult=el('d1PreviewResult');
+d1PreviewButton.addEventListener('click',async()=>{
+  resetD1Apply();
+  d1PreviewButton.disabled=true;
+  d1PreviewResult.textContent='正在讀取 D1 與雲端設定差異（唯讀）…';
+  try{
+    const result=await cloudRequest('GET','/admin/prizes/sync-preview');
+    if(result.ok!==true || result.readOnly!==true || !result.plan?.safeToPropose)throw Error('伺服器未確認安全的唯讀預覽');
+    const p=result.plan;
+    d1PreviewResult.textContent=`D1 唯讀預覽（雲端版本 ${result.revision||"未知"}）：目前 ${p.remoteCount} 項；雲端設定 ${p.localCount} 項；新增 ${p.added.length}、更新 ${p.updated.length}、停用 ${p.disabled.length}。此結果不代表已同步，也不會執行寫入。`;
+    d1PreviewResult.dataset.saved='true';
+    if(p.disabled.length===0 && typeof result.revision==='string' && result.revision){
+      d1PreviewRevision=result.revision;
+      updateD1ApplyState();
+    }
+  }catch(e){d1PreviewResult.textContent='D1 同步預覽未通過：'+e.message+'。未修改任何資料。';d1PreviewResult.dataset.saved='false'}
+  finally{d1PreviewButton.disabled=false}
+});
+
+
+// Phase 8: read actual D1 prize rows; never overwrite the browser's draft prizes.
+const d1Readback=el('d1Readback'),d1ReadbackResult=el('d1ReadbackResult');
+d1Readback.addEventListener('click',async()=>{
+  d1Readback.disabled=true;
+  d1ReadbackResult.textContent='正在讀取 D1 實際獎項與庫存…';
+  try {
+    const r=await cloudRequest('GET','/admin/prizes/d1-readback');
+    if(r.ok!==true||r.readOnly!==true||!Array.isArray(r.prizes))throw Error('讀取結果不完整');
+    const lines=r.prizes.map(p=>`${p.name}｜總數 ${p.quantity}｜已發 ${p.issued}｜剩餘 ${p.remaining}｜${p.enabled?'啟用':'停用'}`);
+    d1ReadbackResult.textContent=`D1 共有 ${r.prizes.length} 項。雲端設定版本 ${r.cloudRevision||'無'}；D1 套用版本 ${r.appliedRevision||'無'}。\n`+(lines.length?lines.join('\n'):'目前 D1 沒有獎項。')+'\n以上為唯讀結果，不代表已同步，不會改動目前編輯內容。';
+    d1ReadbackResult.style.whiteSpace='pre-line';
+  }catch(e){d1ReadbackResult.textContent='D1 實際庫存查詢失敗：'+e.message}
+  finally {d1Readback.disabled=false}
+});
+
+// Equipment maintenance: fail closed until the firmware can reject restart during unresolved transactions.
+const restartCheck=el('restartCheck'),restartDevice=el('restartDevice'),restartResult=el('restartResult');
+restartCheck.addEventListener('click',async()=>{
+  restartCheck.disabled=true;
+  restartDevice.disabled=true;
+  restartResult.textContent='正在查詢後端是否支援安全重啟…';
+  try{
+    const r=await cloudRequest('GET','/admin/device/restart/status');
+    restartResult.textContent=r.reason||'無法確認安全重啟狀態';
+    // Do not offer a restart operation until full device-side transaction safety is verified.
+  }catch(e){restartResult.textContent='無法確認重啟狀態：'+e.message+'。按鈕維持鎖定。'}
+  finally{restartCheck.disabled=false}
+});
+
+// V08: Admin-attested physical ORIGINAL ticket delivery.
+// This never creates a ticket or reprints it; the Worker independently checks
+// Admin session, unresolved print state and the exact ticket identity.
+const handoffButton=el('handoffConfirm');
+if(handoffButton) handoffButton.addEventListener('click',async()=>{
+  const result=el('handoffResult');
+  result.textContent='';
+  // Frontend is a convenience only: the Worker MUST enforce role=Admin.
+  if(typeof window.lotteryCan!=='function'||!window.lotteryCan('accounts_manage')){
+    result.textContent='只有已登入的管理員可以確認紙本交付。';return;
+  }
+  const qr=el('handoffQrValue').value.trim();
+  const match=/^YIQI1\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-f]{64})$/.exec(qr);
+  if(!match){result.textContent='必須掃描完整紙本 QR，不能只輸入獎券 ID 或手工猜測。';return;}
+  if(!el('handoffPaperOriginal').checked||!el('handoffPaperDelivered').checked){
+    result.textContent='請先親自確認紙本完整、已交給持有人，並勾選兩項確認。';return;
+  }
+  if(!window.confirm('這張 B3S 實體紙券確實已完整列印並交付持有人？確認後抽獎機可能允許下一次抽獎。'))return;
+  handoffButton.disabled=true;
+  result.textContent='正在向伺服器確認實體紙本交付…';
+  try{
+    const reply=await cloudRequest('POST','/admin/lottery/handoff/verify',{
+      qrValue:qr,ticketId:match[1],confirmedPhysicalPaper:true,confirmedHandedToHolder:true
+    });
+    if(reply.ok===true&&reply.state==='verified_delivered'&&reply.ticketId?.toLowerCase()===match[1].toLowerCase()){
+      result.textContent='紙本交付已由伺服器確認。ESP32 將自行查詢確認結果；請以設備實際狀態為準。';
+      el('handoffQrValue').value='';
+      el('handoffPaperOriginal').checked=false;
+      el('handoffPaperDelivered').checked=false;
+    }else result.textContent='伺服器未回傳完整的交付確認，先不要重新列印。';
+  }catch(e){
+    result.textContent='交付結果尚未確認：'+e.message+'。請先查核伺服器紀錄，不要盲目重送。';
+  }finally{handoffButton.disabled=false;}
+});
+
+// Real D1 ticket history; read-only, gated both by authenticated UI and Worker permission.
+const historyButton=el('loadTicketHistory');
+if(historyButton)historyButton.addEventListener('click',async()=>{
+  const status=el('ticketHistoryStatus'),root=el('ticketHistoryItems');
+  status.textContent='';root.replaceChildren();
+  if(typeof window.lotteryCan!=='function'||!window.lotteryCan('redeem_history')){
+    status.textContent='目前帳號沒有核銷紀錄查詢權限。';return;
+  }
+  historyButton.disabled=true;status.textContent='正在從 D1 查詢最新獎券紀錄（唯讀）…';
+  try{
+    const r=await cloudRequest('GET','/tickets/list');
+    if(r.ok!==true||!Array.isArray(r.items))throw Error('伺服器回傳資料格式不正確');
+    status.textContent=`已取得 ${r.items.length} 筆紀錄（最多 100 筆，唯讀）。`;
+    for(const t of r.items){
+      const card=document.createElement('article');card.className='card';
+      const head=document.createElement('strong');head.textContent=t.prizeName||'未命名獎項';
+      const line=document.createElement('p');
+      const stateLabel=t.status==='redeemed'?'已核銷':t.status==='issued'?'已發行':t.status==='void'?'已作廢':t.status==='expired'?'已到期':(t.status||'未知');
+      line.textContent=`${t.isTest?'【測試券】':'【正式券】'}${stateLabel}｜${t.storeName||'未標示店名'}｜發行：${t.issuedAt||'無資料'}`;
+      const id=document.createElement('small');id.textContent='獎券 ID：'+(t.id||'無');
+      card.append(head,line,id);root.append(card);
+    }
+    if(!r.items.length)status.textContent='D1 目前沒有獎券紀錄。';
+  }catch(e){status.textContent='查詢失敗：'+e.message+'。沒有修改任何獎券。';}
+  finally{historyButton.disabled=false;}
 });

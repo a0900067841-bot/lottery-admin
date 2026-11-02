@@ -70,7 +70,7 @@ function showRole(){
  const form=document.getElementById('ticketForm');if(form)form.classList.toggle('lottery-role-hidden',!can('ticket_edit'));
  document.documentElement.classList.toggle('lottery-prizes-readonly',!token||mustChange||!can('prizes_edit'));
  const description=document.getElementById('prizePageDescription');
- if(description)description.textContent=can('prizes_edit')?'可新增、修改、刪除測試獎項。權重與數量供抽獎邏輯規劃；此版本不會真正扣除庫存。':'可查看目前測試獎項及數量；此帳號沒有新增、修改或刪除獎項的權限。';
+ if(description)description.textContent=can('prizes_edit')?'可管理獎項與權重。本機數量不等於 D1 實際庫存；必須雲端同步並核對版本才可正式發券。':'可查看目前瀏覽器保存的獎項；正式庫存以 D1 為準，此帳號沒有修改權限。';
  const visible=tabs.filter(x=>!x.classList.contains('lottery-role-hidden'));
  if(visible.length&&!visible.some(x=>x.classList.contains('active')))visible[0].click();
  const noAccess=!!token&&!mustChange&&visible.length===0;
@@ -79,7 +79,7 @@ function showRole(){
 }
 
 function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=data?.username||'';mustChange=!!data?.mustChange;permissions=Array.isArray(data?.permissions)?data.permissions:[];
- key.value=token&&!mustChange&&can('device_sync')?token:'';key.hidden=true;
+ key.value=token&&!mustChange&&(can('device_sync')||can('redeem'))?token:'';key.hidden=true;
  gate.hidden=!!token&&!mustChange;bar.hidden=!token||mustChange;who.textContent=currentName;
  loginForm.hidden=mustChange;changeForm.hidden=!mustChange;showRole();
 }
@@ -101,7 +101,7 @@ changeForm.addEventListener('submit',async e=>{e.preventDefault();const old=gate
  if(p1!==p2){notice.textContent='兩次新密碼不一致';return}if(p1.length<8||p1.length>12){notice.textContent='新密碼必須為 8～12 位';return}
  const button=gate.querySelector('#lotteryChangeButton');button.disabled=true;try{await api('/auth/change-password','POST',{currentPassword:old,newPassword:p1});notice.textContent='密碼修改完成，請重新登入';await signOut();msg.textContent='密碼修改完成，請使用新密碼登入。'}catch(err){notice.textContent='修改失敗：'+err.message}finally{button.disabled=false}
 });
-key.addEventListener('input',()=>{key.value=token&&!mustChange&&can('device_sync')?token:''});
+key.addEventListener('input',()=>{key.value=token&&!mustChange&&(can('device_sync')||can('redeem'))?token:''});
 const main=document.querySelector('main');
 const createPanel=document.createElement('section');createPanel.id='createAccount';createPanel.className='panel';
 const managePanel=document.createElement('section');managePanel.id='manageAccount';managePanel.className='panel';
