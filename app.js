@@ -31,37 +31,15 @@ el('ticketForm').addEventListener('input',ticketChanged);el('ticketForm').addEve
 // v0.1.32: irregular, ticket-confined watermark (preview only).
 // Never transform the watermark layer itself: a rotated layer previously leaked
 // outside the physical ticket rectangle and into the surrounding web page.
+// v0.1.33: retain original v0.1.31 regularly spaced diagonal marks.
+// The receipt element clips any overflow; no watermark can paint outside the white ticket.
 function renderReceiptWatermark(receipt,ticket){
-  const layer=txt('div','','receipt-watermark');
-  layer.setAttribute('aria-hidden','true');
-  layer.style.opacity=String(Math.max(0,Math.min(25,ticket.watermarkOpacity))/100);
-  // Deliberately uneven vertical gaps and left/right offsets, not a grid.
-  // Fixed positions also avoid visual jumping when the form is edited.
-  const marks=[
-    [16,  6,-29],[78, 12,-27],[44, 20,-32],
-    [24, 29,-26],[81, 36,-31],[50, 43,-28],
-    [16, 50,-33],[72, 56,-25],[37, 62,-30],
-    [83, 68,-27],[20, 75,-31],[64, 80,-26],
-    [37, 87,-33],[80, 93,-28]
-  ];
-  const width=Math.max(30,Number(ticket.paperWidth)||55)*96/25.4;
-  const fontSize=Math.max(6,Math.min(30,Number(ticket.watermarkSize)||12));
-  // Fit long user-defined text inside the chosen paper width. This is only
-  // a size safeguard; the selected font-size value remains untouched.
-  const estimatedTextWidth=Array.from(ticket.watermarkText).reduce((sum,ch)=>sum+(/[\x00-\x7f]/.test(ch)?0.65:1),0)*fontSize;
-  const estimatedRotatedWidth=estimatedTextWidth*.91+fontSize*.70;
-  const scale=Math.min(1,Math.max(.12,(width-18)/Math.max(1,estimatedRotatedWidth)));
-  const availableX=Math.max(0,(width-estimatedRotatedWidth*scale)/2-7);
-  for(const [offset,y,angle] of marks){
-    const label=txt('span',ticket.watermarkText);
-    const x=width/2 + (offset-50)/50*availableX;
-    label.style.fontSize=fontSize+'px';
-    label.style.left=x+'px';
-    label.style.top=y+'%';
-    label.style.transform=`translate(-50%,-50%) rotate(${angle}deg) scale(${scale})`;
-    layer.append(label);
-  }
-  receipt.append(layer);
+  const wm=txt('div','','receipt-watermark');
+  wm.setAttribute('aria-hidden','true');
+  wm.style.fontSize=ticket.watermarkSize+'px';
+  wm.style.opacity=String(ticket.watermarkOpacity/100);
+  for(let i=0;i<24;i++)wm.append(txt('span',ticket.watermarkText));
+  receipt.append(wm);
 }
 function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';if(t.watermarkEnabled&&t.watermarkText)renderReceiptWatermark(r,t);el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px'],['watermarkSizeValue',t.watermarkSize+' px'],['watermarkOpacityValue',t.watermarkOpacity+'%']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(50,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'))}
 el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket=ticketFormValues();try{save();renderTicket();el('ticketSaveStatus').textContent='已儲存列印模板（目前瀏覽器）；等待未來同步至 ESP32';el('ticketSaveStatus').dataset.saved='true';renderSavedTicketSummary()}catch(err){el('ticketSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('ticketSaveStatus').dataset.saved='false'}});

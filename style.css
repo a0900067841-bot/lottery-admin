@@ -31,10 +31,10 @@ input[type=range]{height:30px;margin-top:10px;cursor:pointer;touch-action:pan-y}
 
 /* Ticket watermark preview: slanted across ticket, never on barcode or quiet zone. */
 .watermark-settings{border:1px solid #d7e1ee;border-radius:10px;padding:14px;margin:14px 0 18px}.watermark-settings legend{font-weight:700;padding:0 6px}
-/* v0.1.32: clip every watermark to the white paper, not the whole page. */
+/* v0.1.33: original regularly repeated diagonal watermark, clipped by paper bounds. */
 .receipt{position:relative;isolation:isolate;overflow:hidden}
 .receipt>*:not(.receipt-watermark){position:relative;z-index:1}
-.receipt-watermark{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;font-weight:700;line-height:1.1}
-.receipt-watermark span{position:absolute;display:block;white-space:nowrap;transform-origin:center center}
-/* Barcode plus a white quiet zone must contain no watermark pixels. */
+.receipt-watermark{position:absolute;inset:2mm;z-index:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-around;gap:7mm 2mm;overflow:hidden;pointer-events:none;transform:rotate(-30deg);font-weight:700;line-height:1.4}
+.receipt-watermark span{display:block;white-space:nowrap}
+/* QR / Code 128 and their quiet zones stay pure white. */
 .receipt-barcode{background:#fff;z-index:2!important;box-shadow:0 0 0 2mm #fff}
