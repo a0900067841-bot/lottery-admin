@@ -1,7 +1,7 @@
 'use strict';
 // v0.1.16: hide obsolete sync-key UI; retain authenticated cloud publishing. Browser storage is NEVER a real prize ledger.
 const KEY='lottery_ui_v010'; // reuse v0.1.4 data
-const defaults={prizes:[],ticket:{store:'',days:7,usage:'',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true}};
+const defaults={prizes:[],ticket:{store:'',days:7,usage:'',rules:['僅限原店兌換','購物金不可買菸','本券限兌換一次','本券不得折換現金','退貨應繳回所有獎品','退換貨不得再次抽獎'].join('\n'),warning:'逾期無法使用\n須出示實體紙本\n照片、影印無效',paperWidth:55,barcodeType:'qr',barcodeSize:90,rulesFontSize:12,warningFontSize:12,showRules:true,showWarning:true,watermarkEnabled:false,watermarkText:'億柒電子抽獎機',watermarkSize:12,watermarkOpacity:8}};
 let state;
 try{const v=JSON.parse(localStorage.getItem(KEY));state=v&&Array.isArray(v.prizes)&&v.ticket?v:structuredClone(defaults)}catch{state=structuredClone(defaults)}
 const STORE_MIGRATION_KEY='lottery_store_placeholder_migrated_v014';
@@ -14,21 +14,21 @@ function txt(tag,value,className){const n=document.createElement(tag);n.textCont
 function renderPrizes(){el('prizeCount').textContent=state.prizes.length;const root=el('prizeList');root.replaceChildren();state.prizes.forEach((p,i)=>{const card=txt('div','','card prize-row'),info=document.createElement('div');info.append(txt('strong',p.name),txt('p',`${p.type} · 權重 ${p.weight} · 總數 ${p.quantity??0} · 已抽出 ${p.issued??0} · 剩餘 ${Math.max(0,(p.quantity??0)-(p.issued??0))}`));const actions=document.createElement('div');const edit=txt('button','編輯'),del=txt('button','刪除');edit.onclick=()=>{el('editIndex').value=i;el('prizeName').value=p.name;el('prizeType').value=p.type;el('prizeWeight').value=p.weight;el('prizeQuantity').value=p.quantity??0;window.scrollTo({top:0,behavior:'smooth'})};del.onclick=()=>{if(confirm(`刪除「${p.name}」？`)){state.prizes.splice(i,1);save();renderPrizes()}};actions.append(edit,del);card.append(info,actions);root.append(card)})}
 function clearForm(){el('prizeForm').reset();el('editIndex').value=''}
 el('prizeForm').addEventListener('submit',e=>{e.preventDefault();const p={name:el('prizeName').value.trim(),type:el('prizeType').value,weight:Number(el('prizeWeight').value),quantity:Number(el('prizeQuantity').value)};if(!p.name||!Number.isInteger(p.weight)||p.weight<1||!Number.isSafeInteger(p.quantity)||p.quantity<0)return;const i=el('editIndex').value;if(i!==''){const previous=state.prizes[Number(i)];if(previous.id!==undefined)p.id=previous.id;p.issued=previous.issued??0;if(p.quantity<p.issued){alert('總數量不能小於已抽出數量');return}}else{p.issued=0;/* Legacy prizes stay unmodified. New items have stable identity. */p.id=newPrizeId()}if(i==='')state.prizes.push(p);else state.prizes[Number(i)]=p;save();clearForm();renderPrizes()});el('clearEdit').onclick=clearForm;
-function loadTicket(){const t=state.ticket;el('storeName').value=t.store||'';el('validDays').value=t.days;el('usage').value=t.usage;el('rules').value=t.rules;el('warning').value=t.warning;el('paperWidth').value=[30,40,50,55,57,58].includes(Number(t.paperWidth))?t.paperWidth:55;el('barcodeType').value=t.barcodeType||'qr';el('barcodeSize').value=t.barcodeSize??90;el('rulesFontSize').value=t.rulesFontSize??12;el('warningFontSize').value=t.warningFontSize??12;el('showRules').checked=t.showRules!==false;el('showWarning').checked=t.showWarning!==false;renderTicket()}
-function ticketFormValues(){return {store:el('storeName').value.trim(),days:Number(el('validDays').value),usage:el('usage').value,rules:el('rules').value,warning:el('warning').value,paperWidth:Number(el('paperWidth').value),barcodeType:el('barcodeType').value,barcodeSize:Number(el('barcodeSize').value),rulesFontSize:Number(el('rulesFontSize').value),warningFontSize:Number(el('warningFontSize').value),showRules:el('showRules').checked,showWarning:el('showWarning').checked}}
+function loadTicket(){const t=state.ticket;el('storeName').value=t.store||'';el('validDays').value=t.days;el('usage').value=t.usage;el('rules').value=t.rules;el('warning').value=t.warning;el('paperWidth').value=[30,40,50,55,57,58].includes(Number(t.paperWidth))?t.paperWidth:55;el('barcodeType').value=t.barcodeType||'qr';el('barcodeSize').value=t.barcodeSize??90;el('rulesFontSize').value=t.rulesFontSize??12;el('warningFontSize').value=t.warningFontSize??12;el('watermarkEnabled').checked=t.watermarkEnabled===true;el('watermarkText').value=t.watermarkText??'億柒電子抽獎機';el('watermarkSize').value=t.watermarkSize??12;el('watermarkOpacity').value=t.watermarkOpacity??8;el('showRules').checked=t.showRules!==false;el('showWarning').checked=t.showWarning!==false;renderTicket()}
+function ticketFormValues(){return {store:el('storeName').value.trim(),days:Number(el('validDays').value),usage:el('usage').value,rules:el('rules').value,warning:el('warning').value,paperWidth:Number(el('paperWidth').value),barcodeType:el('barcodeType').value,barcodeSize:Number(el('barcodeSize').value),rulesFontSize:Number(el('rulesFontSize').value),warningFontSize:Number(el('warningFontSize').value),watermarkEnabled:el('watermarkEnabled').checked,watermarkText:el('watermarkText').value.trim(),watermarkSize:Number(el('watermarkSize').value),watermarkOpacity:Number(el('watermarkOpacity').value),showRules:el('showRules').checked,showWarning:el('showWarning').checked}}
 function ticketChanged(){
   renderTicket();
   const changed=JSON.stringify(ticketFormValues())!==JSON.stringify(normalizeTicket(state.ticket));
   el('ticketSaveStatus').textContent=changed?'預覽已更新，但尚未儲存；正式模板仍使用上次儲存版本':'目前設定與已儲存模板相同';
   el('ticketSaveStatus').dataset.saved=changed?'false':'true';
 }
-function normalizeTicket(t){return {store:t.store||'',days:Number(t.days)||7,usage:t.usage||'',rules:t.rules||'',warning:t.warning||'',paperWidth:Number(t.paperWidth)||55,barcodeType:t.barcodeType||'qr',barcodeSize:Number(t.barcodeSize??90),rulesFontSize:Number(t.rulesFontSize??12),warningFontSize:Number(t.warningFontSize??12),showRules:t.showRules!==false,showWarning:t.showWarning!==false}}
+function normalizeTicket(t){return {store:t.store||'',days:Number(t.days)||7,usage:t.usage||'',rules:t.rules||'',warning:t.warning||'',paperWidth:Number(t.paperWidth)||55,barcodeType:t.barcodeType||'qr',barcodeSize:Number(t.barcodeSize??90),rulesFontSize:Number(t.rulesFontSize??12),warningFontSize:Number(t.warningFontSize??12),watermarkEnabled:t.watermarkEnabled===true,watermarkText:typeof t.watermarkText==='string'?t.watermarkText:'億柒電子抽獎機',watermarkSize:Number(t.watermarkSize??12),watermarkOpacity:Number(t.watermarkOpacity??8),showRules:t.showRules!==false,showWarning:t.showWarning!==false}}
 function renderSavedTicketSummary(){
   const t=normalizeTicket(state.ticket);
   el('savedTicketSummary').textContent=`${t.paperWidth} mm · ${t.barcodeType==='qr'?'QR Code':'Code 128'} · 有效 ${t.days} 天 · 條碼比例 ${t.barcodeSize}%`;
 }
 el('ticketForm').addEventListener('input',ticketChanged);el('ticketForm').addEventListener('change',ticketChanged);
-function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(60,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'))}
+function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';if(t.watermarkEnabled&&t.watermarkText){const wm=txt('div','','receipt-watermark');wm.setAttribute('aria-hidden','true');wm.style.fontSize=t.watermarkSize+'px';wm.style.opacity=String(t.watermarkOpacity/100);for(let i=0;i<24;i++)wm.append(txt('span',t.watermarkText));r.append(wm)}el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px'],['watermarkSizeValue',t.watermarkSize+' px'],['watermarkOpacityValue',t.watermarkOpacity+'%']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(50,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'))}
 el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket=ticketFormValues();try{save();renderTicket();el('ticketSaveStatus').textContent='已儲存列印模板（目前瀏覽器）；等待未來同步至 ESP32';el('ticketSaveStatus').dataset.saved='true';renderSavedTicketSummary()}catch(err){el('ticketSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('ticketSaveStatus').dataset.saved='false'}});
 // Actual redemption availability is enforced by the authenticated Worker.
 // A stale website cannot turn on issuance or bypass the server-side paper checks.
@@ -97,7 +97,7 @@ function validateDeviceConfig(x){
   if(!x||typeof x!=='object'||x.schema!==DEVICE_SCHEMA||x.version!==1)throw Error('不是支援的設備設定格式（版本 1）');
   const t=x.ticket;
   if(!t||!validText(t.store,40)||!intRange(t.days,1,365)||!validText(t.usage,3000)||!validText(t.rules,6000)||!validText(t.warning,3000))throw Error('獎券文字或有效期限不正確');
-  if(![30,40,50,55,57,58].includes(t.paperWidth)||!['qr','code128'].includes(t.barcodeType)||!intRange(t.barcodeSize,60,100)||!intRange(t.rulesFontSize,10,18)||!intRange(t.warningFontSize,10,18)||typeof t.showRules!=='boolean'||typeof t.showWarning!=='boolean')throw Error('紙寬、條碼或文字設定不正確');
+  if(![30,40,50,55,57,58].includes(t.paperWidth)||!['qr','code128'].includes(t.barcodeType)||!intRange(t.barcodeSize,50,100)||!intRange(t.rulesFontSize,1,18)||!intRange(t.warningFontSize,1,18)||typeof t.showRules!=='boolean'||typeof t.showWarning!=='boolean'||(t.watermarkEnabled!==undefined&&typeof t.watermarkEnabled!=='boolean')||(t.watermarkText!==undefined&&!validText(t.watermarkText,40))||(t.watermarkSize!==undefined&&!intRange(t.watermarkSize,6,30))||(t.watermarkOpacity!==undefined&&!intRange(t.watermarkOpacity,1,25)))throw Error('紙寬、條碼或文字設定不正確');
   if(!Array.isArray(x.prizes)||x.prizes.length>100)throw Error('獎項數量格式不正確（最多 100 項）');
   const ids=new Set();
   for(const p of x.prizes){
@@ -409,7 +409,7 @@ if(handoffButton) handoffButton.addEventListener('click',async()=>{
       qrValue:qr,ticketId:match[1],confirmedPhysicalPaper:true,confirmedHandedToHolder:true
     });
     if(reply.ok===true&&reply.state==='verified_delivered'&&reply.ticketId?.toLowerCase()===match[1].toLowerCase()){
-      result.textContent='紙本交付已由伺服器確認。ESP32 將自行查詢確認結果；請以設備實際狀態為準。';
+      result.textContent='紙本交付已由伺服器確認。'+(reply.remoteCommandStatus==='completed'?'遠端指令已結案；設備仍須自行確認並解除鎖定。':reply.remoteCommandStatus==='pending'?'遠端指令仍鎖定，請先查詢狀態，不要重複發券。':'ESP32 將自行查詢確認結果；請以設備實際狀態為準。');
       el('handoffQrValue').value='';
       el('handoffPaperOriginal').checked=false;
       el('handoffPaperDelivered').checked=false;
@@ -445,3 +445,82 @@ if(historyButton)historyButton.addEventListener('click',async()=>{
   }catch(e){status.textContent='查詢失敗：'+e.message+'。沒有修改任何獎券。';}
   finally{historyButton.disabled=false;}
 });
+
+
+// Site -> Worker -> ESP32 remote draw. Authorization must ALSO be enforced by Worker.
+// Do not send a command without cloud preflight; never equate ACK with physical output.
+const remoteDrawButton=el('remoteDrawSubmit');
+const remoteDrawStatus=el('remoteDrawStatus');
+const remoteDrawStatusButton=el('remoteDrawStatusButton');
+let lastRemoteCommandId=null,remoteReady=false;
+try{const stored=sessionStorage.getItem('yiqiLastRemoteDrawId');if(/^[0-9a-f-]{36}$/i.test(stored||''))lastRemoteCommandId=stored;}catch{}
+// D1—not browser sessionStorage—is the authority for unfinished commands.
+// This is read-only recovery; if status cannot be verified, leave printing locked.
+async function refreshRemoteCommandFromCloud(){
+  const pending=await cloudRequest('GET','/admin/device/draw-commands');
+  if(pending.ok!==true || pending.readOnly!==true)throw Error('無法確認未完成的遠端指令');
+  if(pending.command){
+    if(!/^[0-9a-f-]{36}$/i.test(pending.command.commandId||''))throw Error('雲端指令識別碼不正確');
+    lastRemoteCommandId=pending.command.commandId;
+    try{sessionStorage.setItem('yiqiLastRemoteDrawId',lastRemoteCommandId)}catch{}
+    return `雲端尚有未完成指令（${pending.command.state}）。已找回編號；不可重新出券，請先完成原紙本的交付確認。`;
+  }
+  if(lastRemoteCommandId){
+    // A stale browser ID may be cleared ONLY after the server confirms completion.
+    const prev=await cloudRequest('GET','/admin/device/draw-commands?commandId='+encodeURIComponent(lastRemoteCommandId));
+    if(prev.ok!==true||prev.commandId!==lastRemoteCommandId||prev.state!=='completed')
+      throw Error('上一筆指令尚無已完成證據；維持鎖定');
+    lastRemoteCommandId=null;
+    try{sessionStorage.removeItem('yiqiLastRemoteDrawId')}catch{}
+  }
+  return '';
+}
+async function checkRemoteDrawReadiness(){
+  remoteReady=false;remoteDrawButton.disabled=true;
+  if(typeof window.lotteryCan!=='function'||!window.lotteryCan('ticket_edit')){
+    remoteDrawStatus.textContent='目前帳號沒有獎券模板編輯／遠端列印權限。';return false;
+  }
+  try{
+    const note=await refreshRemoteCommandFromCloud();
+    if(note){remoteDrawStatus.textContent=note;return false;}
+    const r=await cloudRequest('GET','/admin/lottery/readiness');
+    if(r.ok!==true||r.readOnly!==true||r.checks?.modeIsProduction!==true||r.productionPreflight!==true){
+      remoteDrawStatus.textContent='正式發券或獎項同步尚未就緒；不會下達列印指令。';return false;
+    }
+    remoteReady=true;
+    remoteDrawButton.disabled=!!lastRemoteCommandId;
+    remoteDrawStatus.textContent=lastRemoteCommandId?'已有上次指令，請先查詢狀態。':'雲端條件已通過；按下後仍需確認 B3S 實際出紙。';
+    return true;
+  }catch(e){remoteDrawStatus.textContent='遠端列印保持鎖定：'+e.message;return false;}
+}
+remoteDrawButton.addEventListener('click',async()=>{
+  if(lastRemoteCommandId){remoteDrawStatus.textContent='已有尚未查明的指令，請先查詢狀態，不可重複下達。';return;}
+  if(!(await checkRemoteDrawReadiness()))return;
+  if(!confirm('確定要讓 ESP32 抽出一張新的正式獎券並嘗試由 B3S 列印嗎？'))return;
+  const id=crypto.randomUUID();
+  lastRemoteCommandId=id;
+  try{sessionStorage.setItem('yiqiLastRemoteDrawId',id)}catch{}
+  remoteDrawButton.disabled=true;
+  remoteDrawStatus.textContent='正在向雲端登記指令，尚未印出獎券…';
+  try{
+    const r=await cloudRequest('POST','/admin/device/draw-commands',{commandId:id,confirmedNewTicket:true});
+    if(r.ok!==true||r.commandId!==id)throw Error('未收到一致的雲端指令確認');
+    remoteDrawStatus.textContent='指令已登記：'+r.state+'。請確認 B3S 實際出紙；伺服器接收不等於列印成功。';
+  }catch(e){remoteDrawStatus.textContent='指令結果未確認：'+e.message+'。請先查詢相同指令，切勿重複列印。';}
+});
+remoteDrawStatusButton.addEventListener('click',async()=>{
+  if(!lastRemoteCommandId){await checkRemoteDrawReadiness();if(!lastRemoteCommandId)return;}
+  try{
+    const r=await cloudRequest('GET','/admin/device/draw-commands?commandId='+encodeURIComponent(lastRemoteCommandId));
+    if(r.ok!==true||r.commandId!==lastRemoteCommandId)throw Error('伺服器未確認原始指令');
+    remoteDrawStatus.textContent='指令狀態：'+r.state+(r.state==='completed'?'（已確認紙本交付）':'（未確認紙本交付，不可視為列印成功）');
+    if(r.state==='completed'){
+      lastRemoteCommandId=null;
+      try{sessionStorage.removeItem('yiqiLastRemoteDrawId')}catch{}
+      await checkRemoteDrawReadiness();
+    }
+  }catch(e){remoteDrawStatus.textContent='指令仍未確認：'+e.message+'。不要重複下達。';}
+});
+window.addEventListener('lottery-auth-ready',()=>{void checkRemoteDrawReadiness()});
+// Also re-check after login since older auth.js versions do not emit an event.
+setTimeout(()=>{void checkRemoteDrawReadiness()},1000);

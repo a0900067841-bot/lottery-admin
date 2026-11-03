@@ -28,3 +28,10 @@ input[type=range]{height:30px;margin-top:10px;cursor:pointer;touch-action:pan-y}
 
 /* v0.1.8 config backup UI */
 .print-prep hr{border:0;border-top:1px solid #e2e8f0;margin:18px 0}.print-prep input[type=file]{font-size:14px}.print-prep button{margin:4px 5px 10px 0}
+
+/* Ticket watermark preview: slanted across ticket, never on barcode or quiet zone. */
+.watermark-settings{border:1px solid #d7e1ee;border-radius:10px;padding:14px;margin:14px 0 18px}.watermark-settings legend{font-weight:700;padding:0 6px}
+.receipt{position:relative;isolation:isolate}.receipt>*:not(.receipt-watermark){position:relative;z-index:1}
+.receipt-watermark{position:absolute;inset:2mm;z-index:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-around;gap:7mm 2mm;overflow:hidden;pointer-events:none;transform:rotate(-30deg);font-weight:700;line-height:1.4}
+.receipt-watermark span{display:block;white-space:nowrap}
+.receipt-barcode{background:#fff;z-index:2!important;box-shadow:0 0 0 2mm #fff}

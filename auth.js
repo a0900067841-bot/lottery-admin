@@ -62,7 +62,7 @@ function showRole(){
  createPanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_manage'));
  managePanel.classList.toggle('lottery-role-hidden',!token||mustChange||!can('accounts_view'));
  if(token&&!mustChange)showSelectedAccount();
- for(const [id,perm] of [['lotterySoundCard','sound_settings'],['lotteryDeviceConfigCard','device_config_view'],['lotteryPrintPrepCard','print_prep'],['lotteryTicketTemplateCard','ticket_view']]){
+ for(const [id,perm] of [['lotterySoundCard','sound_settings'],['lotteryDeviceConfigCard','device_config_view'],['lotteryPrintPrepCard','print_prep'],['lotteryTicketTemplateCard','ticket_view'],['remoteDrawControl','ticket_edit']]){
   const block=document.getElementById(id);if(block)block.classList.toggle('lottery-role-hidden',!token||mustChange||!can(perm));
  }
  const cloud=document.getElementById('cloudSyncCard');if(cloud)cloud.classList.toggle('lottery-role-hidden',!token||mustChange||!can('device_sync'));
@@ -79,9 +79,9 @@ function showRole(){
 }
 
 function setAuth(data){token=data?.token||'';role=data?.role||'';currentName=data?.username||'';mustChange=!!data?.mustChange;permissions=Array.isArray(data?.permissions)?data.permissions:[];
- key.value=token&&!mustChange&&(can('device_sync')||can('redeem'))?token:'';key.hidden=true;
+ key.value=token&&!mustChange&&(can('device_sync')||can('redeem')||can('ticket_edit'))?token:'';key.hidden=true;
  gate.hidden=!!token&&!mustChange;bar.hidden=!token||mustChange;who.textContent=currentName;
- loginForm.hidden=mustChange;changeForm.hidden=!mustChange;showRole();
+ loginForm.hidden=mustChange;changeForm.hidden=!mustChange;showRole();window.dispatchEvent(new Event('lottery-auth-ready'));
 }
 async function api(path,method='GET',body,override){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);
@@ -101,7 +101,7 @@ changeForm.addEventListener('submit',async e=>{e.preventDefault();const old=gate
  if(p1!==p2){notice.textContent='兩次新密碼不一致';return}if(p1.length<8||p1.length>12){notice.textContent='新密碼必須為 8～12 位';return}
  const button=gate.querySelector('#lotteryChangeButton');button.disabled=true;try{await api('/auth/change-password','POST',{currentPassword:old,newPassword:p1});notice.textContent='密碼修改完成，請重新登入';await signOut();msg.textContent='密碼修改完成，請使用新密碼登入。'}catch(err){notice.textContent='修改失敗：'+err.message}finally{button.disabled=false}
 });
-key.addEventListener('input',()=>{key.value=token&&!mustChange&&(can('device_sync')||can('redeem'))?token:''});
+key.addEventListener('input',()=>{key.value=token&&!mustChange&&(can('device_sync')||can('redeem')||can('ticket_edit'))?token:''});
 const main=document.querySelector('main');
 const createPanel=document.createElement('section');createPanel.id='createAccount';createPanel.className='panel';
 const managePanel=document.createElement('section');managePanel.id='manageAccount';managePanel.className='panel';
