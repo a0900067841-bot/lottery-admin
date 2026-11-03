@@ -28,11 +28,8 @@ function renderSavedTicketSummary(){
   el('savedTicketSummary').textContent=`${t.paperWidth} mm · ${t.barcodeType==='qr'?'QR Code':'Code 128'} · 有效 ${t.days} 天 · 條碼比例 ${t.barcodeSize}%`;
 }
 el('ticketForm').addEventListener('input',ticketChanged);el('ticketForm').addEventListener('change',ticketChanged);
-// v0.1.32: irregular, ticket-confined watermark (preview only).
-// Never transform the watermark layer itself: a rotated layer previously leaked
-// outside the physical ticket rectangle and into the surrounding web page.
-// v0.1.33: retain original v0.1.31 regularly spaced diagonal marks.
-// The receipt element clips any overflow; no watermark can paint outside the white ticket.
+// v0.1.34: stable, evenly staggered individual watermark labels, entirely inside paper.
+// Position only complete labels; never rotate a full-size layer or clip partial words.
 function renderReceiptWatermark(receipt,ticket){
   const wm=txt('div','','receipt-watermark');
   wm.setAttribute('aria-hidden','true');
@@ -41,7 +38,59 @@ function renderReceiptWatermark(receipt,ticket){
   for(let i=0;i<24;i++)wm.append(txt('span',ticket.watermarkText));
   receipt.append(wm);
 }
-function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';if(t.watermarkEnabled&&t.watermarkText)renderReceiptWatermark(r,t);el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px'],['watermarkSizeValue',t.watermarkSize+' px'],['watermarkOpacityValue',t.watermarkOpacity+'%']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(50,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'))}
+function layoutReceiptWatermark(receipt){
+  const layer=receipt.querySelector('.receipt-watermark');
+  if(!layer)return;
+  const marks=Array.from(layer.children);
+  if(!marks.length)return;
+  // Measure the original text without rotation before placing each label.
+  for(const el of marks){el.style.display='none';el.style.transform='none'}
+  const probe=marks[0];
+  probe.style.display='block';probe.style.left='0';probe.style.top='0';
+  const rect=probe.getBoundingClientRect();
+  const width=receipt.clientWidth,height=receipt.clientHeight;
+  const margin=8,cos=Math.cos(Math.PI/6),sin=Math.sin(Math.PI/6);
+  const unscaledW=rect.width*cos+rect.height*sin;
+  const unscaledH=rect.width*sin+rect.height*cos;
+  if(width<=2*margin||height<=2*margin||!unscaledW||!unscaledH){probe.style.display='none';return}
+  // Very long admin-supplied text scales down rather than extending outside paper.
+  const scale=Math.min(1,(width-2*margin)/unscaledW,(height-2*margin)/unscaledH);
+  const halfW=unscaledW*scale/2,halfH=unscaledH*scale/2;
+  const minX=margin+halfW,maxX=width-margin-halfW;
+  const minY=margin+halfH,maxY=height-margin-halfH;
+  const twoColumns=maxX-minX>=unscaledW*scale+12;
+  const centers=twoColumns?[minX+2,maxX-2]:[(minX+maxX)/2];
+  const rowStep=Math.max(55,unscaledH*scale*1.32);
+  // QR and its quiet zone are entirely blank and watermark-free.
+  const barcode=receipt.querySelector('.receipt-barcode');
+  let qr=null;
+  if(barcode){
+    const a=barcode.getBoundingClientRect(),b=receipt.getBoundingClientRect();
+    qr={l:a.left-b.left-10,r:a.right-b.left+10,t:a.top-b.top-10,b:a.bottom-b.top+10};
+  }
+  let used=0;
+  for(let row=0;used<marks.length;row++){
+    let inRange=false;
+    for(let col=0;col<centers.length&&used<marks.length;col++){
+      const x=centers[col],y=minY+4+row*rowStep+(col%2)*rowStep/2;
+      if(y>maxY)continue;
+      inRange=true;
+      const overlapsQr=qr&&(x+halfW>qr.l&&x-halfW<qr.r&&y+halfH>qr.t&&y-halfH<qr.b);
+      if(overlapsQr)continue;
+      const mark=marks[used++];
+      mark.style.display='block';
+      mark.style.left=x+'px';mark.style.top=y+'px';
+      mark.style.transform='translate(-50%,-50%) rotate(-30deg) scale('+scale+')';
+    }
+    if(!inRange)break;
+  }
+  for(let i=used;i<marks.length;i++)marks[i].style.display='none';
+}
+const receiptWatermarkResizeObserver=typeof ResizeObserver==='function'
+  ?new ResizeObserver(entries=>{for(const entry of entries)layoutReceiptWatermark(entry.target)})
+  :null;
+window.addEventListener('resize',()=>layoutReceiptWatermark(el('receipt')));
+function renderTicket(){const t=ticketFormValues(),r=el('receipt');r.replaceChildren();const paperWidth=[30,40,50,55,57,58].includes(t.paperWidth)?t.paperWidth:55;r.style.width=paperWidth+'mm';if(t.watermarkEnabled&&t.watermarkText)renderReceiptWatermark(r,t);el('previewPaperWidth').textContent=paperWidth+' mm';for(const [id,v] of [['barcodeSizeValue',t.barcodeSize+'%'],['rulesFontSizeValue',t.rulesFontSize+' px'],['warningFontSizeValue',t.warningFontSize+' px'],['watermarkSizeValue',t.watermarkSize+' px'],['watermarkOpacityValue',t.watermarkOpacity+'%']])el(id).textContent=v;const now=new Date(),pad=n=>String(n).padStart(2,'0'),fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;const expiry=new Date(now.getFullYear(),now.getMonth(),now.getDate()+Math.max(1,Number(t.days)||1));const line=(label,value)=>{const p=txt('p','','receipt-meta');p.append(txt('strong',label),document.createTextNode(value));return p};const section=(heading,body,size)=>{const block=txt('section','','receipt-section');block.append(txt('strong',heading,'receipt-section-title'),txt('div',body||'','receipt-section-text'));if(size)block.querySelector('.receipt-section-text').style.fontSize=size+'px';return block};if(t.store)r.append(txt('h2',t.store,'receipt-store'));const prize=state.prizes.find(p=>Number(p.quantity)>0)||state.prizes[0];r.append(txt('h3',prize?.name||'獎項名稱（示意）','receipt-prize'));r.append(line('列印日期：',`${fmt(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`));r.append(document.createElement('hr'));const code=txt('div','','receipt-barcode');const isQR=t.barcodeType==='qr';const symbol=txt('div',isQR?'QR 示意':'CODE 128 示意',isQR?'barcode-qr-placeholder':'barcode-128-placeholder');symbol.style.width=Math.max(50,Math.min(100,t.barcodeSize??90))+'%';symbol.setAttribute('aria-label','不可掃描的條碼版面佔位圖');code.append(symbol,txt('small','版面示意｜不可掃描核銷','receipt-qr-note'));r.append(code);r.append(line('活動序號：','DEMO-NOT-VALID'));r.append(line('序號有效期限：',fmt(expiry)));r.append(document.createElement('hr'));const rules=String(t.rules||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).join('\n');if(t.usage.trim())r.append(section('活動說明：',t.usage));if(rules&&t.showRules)r.append(section('使用規則：',rules,t.rulesFontSize));if(t.warning.trim()&&t.showWarning){r.append(document.createElement('hr'));r.append(section('注意事項：',t.warning,t.warningFontSize))}r.append(txt('p','展示預覽｜非有效獎券','preview-warning'));layoutReceiptWatermark(r);if(receiptWatermarkResizeObserver)receiptWatermarkResizeObserver.observe(r)}
 el('ticketForm').addEventListener('submit',e=>{e.preventDefault();state.ticket=ticketFormValues();try{save();renderTicket();el('ticketSaveStatus').textContent='已儲存列印模板（目前瀏覽器）；等待未來同步至 ESP32';el('ticketSaveStatus').dataset.saved='true';renderSavedTicketSummary()}catch(err){el('ticketSaveStatus').textContent='儲存失敗：請檢查瀏覽器儲存空間';el('ticketSaveStatus').dataset.saved='false'}});
 // Actual redemption availability is enforced by the authenticated Worker.
 // A stale website cannot turn on issuance or bypass the server-side paper checks.
