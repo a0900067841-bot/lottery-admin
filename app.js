@@ -514,7 +514,7 @@ if(historyButton)historyButton.addEventListener('click',async()=>{
 const remoteDrawButton=el('remoteDrawSubmit');
 const remoteDrawStatus=el('remoteDrawStatus');
 const remoteDrawStatusButton=el('remoteDrawStatusButton');
-let lastRemoteCommandId=null,remoteReady=false;
+let lastRemoteCommandId=null,remoteReady=false,remoteIssueMode=null;
 try{const stored=sessionStorage.getItem('yiqiLastRemoteDrawId');if(/^[0-9a-f-]{36}$/i.test(stored||''))lastRemoteCommandId=stored;}catch{}
 // D1—not browser sessionStorage—is the authority for unfinished commands.
 // This is read-only recovery; if status cannot be verified, leave printing locked.
@@ -538,7 +538,7 @@ async function refreshRemoteCommandFromCloud(){
   return '';
 }
 async function checkRemoteDrawReadiness(){
-  remoteReady=false;remoteDrawButton.disabled=true;
+  remoteReady=false;remoteIssueMode=null;remoteDrawButton.disabled=true;
   if(typeof window.lotteryCan!=='function'||!window.lotteryCan('ticket_edit')){
     remoteDrawStatus.textContent='目前帳號沒有獎券模板編輯／遠端列印權限。';return false;
   }
@@ -546,26 +546,39 @@ async function checkRemoteDrawReadiness(){
     const note=await refreshRemoteCommandFromCloud();
     if(note){remoteDrawStatus.textContent=note;return false;}
     const r=await cloudRequest('GET','/admin/lottery/readiness');
-    if(r.ok!==true||r.readOnly!==true||r.checks?.modeIsProduction!==true||r.productionPreflight!==true){
-      remoteDrawStatus.textContent='正式發券或獎項同步尚未就緒；不會下達列印指令。';return false;
+    const testReady=r.ok===true&&r.readOnly===true&&
+      r.checks?.modeIsTest===true&&r.testPreflight===true;
+    const productionReady=r.ok===true&&r.readOnly===true&&
+      r.checks?.modeIsProduction===true&&r.productionPreflight===true&&
+      r.remoteProductionEnabled===true;
+    if(!testReady&&!productionReady){
+      remoteDrawStatus.textContent='測試／正式發券或獎項同步尚未就緒；不會下達列印指令。';return false;
     }
+    remoteIssueMode=testReady?'test':'production';
     remoteReady=true;
     remoteDrawButton.disabled=!!lastRemoteCommandId;
-    remoteDrawStatus.textContent=lastRemoteCommandId?'已有上次指令，請先查詢狀態。':'雲端條件已通過；按下後仍需確認 B3S 實際出紙。';
+    const modeLabel=remoteIssueMode==='test'?'測試券（不可兌換）':'正式獎券';
+    remoteDrawStatus.textContent=lastRemoteCommandId?'已有上次指令，請先查詢狀態。':
+      `雲端已允許 ${modeLabel}；仍須確認 B3S 實際出紙。`;
     return true;
   }catch(e){remoteDrawStatus.textContent='遠端列印保持鎖定：'+e.message;return false;}
 }
 remoteDrawButton.addEventListener('click',async()=>{
   if(lastRemoteCommandId){remoteDrawStatus.textContent='已有尚未查明的指令，請先查詢狀態，不可重複下達。';return;}
   if(!(await checkRemoteDrawReadiness()))return;
-  if(!confirm('確定要讓 ESP32 抽出一張新的正式獎券並嘗試由 B3S 列印嗎？'))return;
+  const expectedMode=remoteIssueMode;
+  if(expectedMode!=='test'&&expectedMode!=='production')return;
+  const confirmation=expectedMode==='test'
+    ?'確定要讓 ESP32 抽出一張測試券並嘗試由 B3S 列印嗎？測試券不可兌換。'
+    :'確定要讓 ESP32 抽出一張新的正式獎券並嘗試由 B3S 列印嗎？';
+  if(!confirm(confirmation))return;
   const id=crypto.randomUUID();
   lastRemoteCommandId=id;
   try{sessionStorage.setItem('yiqiLastRemoteDrawId',id)}catch{}
   remoteDrawButton.disabled=true;
   remoteDrawStatus.textContent='正在向雲端登記指令，尚未印出獎券…';
   try{
-    const r=await cloudRequest('POST','/admin/device/draw-commands',{commandId:id,confirmedNewTicket:true});
+    const r=await cloudRequest('POST','/admin/device/draw-commands',{commandId:id,confirmedNewTicket:true,expectedMode});
     if(r.ok!==true||r.commandId!==id)throw Error('未收到一致的雲端指令確認');
     remoteDrawStatus.textContent='指令已登記：'+r.state+'。請確認 B3S 實際出紙；伺服器接收不等於列印成功。';
   }catch(e){remoteDrawStatus.textContent='指令結果未確認：'+e.message+'。請先查詢相同指令，切勿重複列印。';}
